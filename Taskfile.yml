@@ -1,0 +1,82 @@
+version: '3'
+
+vars:
+  BINARY_NAME: anisim
+  MAIN_PATH: ./cmd/anisim
+dotenv:
+  - .env
+tasks:
+  default:
+    cmds:
+      - task: dev
+
+  dev:
+    desc: Run development server with air
+    cmds:
+      - air
+
+  build:
+    desc: Build the application
+    cmds:
+      - go build -o tmp/{{.BINARY_NAME}} {{.MAIN_PATH}}
+
+  templ:
+    desc: Generate templ files
+    cmds:
+      - templ generate
+
+  templ:watch:
+    desc: Watch and generate templ files
+    cmds:
+      - templ generate --watch
+
+  tailwind:build:
+    desc: Build tailwind CSS
+    cmds:
+      - npx tailwindcss -i ./static/css/input.css -o ./static/css/output.css
+
+  tailwind:watch:
+    desc: Watch and build tailwind CSS
+    cmds:
+      - npx tailwindcss -i ./static/css/input.css -o ./static/css/output.css --watch
+
+  sqlc:generate:
+    desc: Generate sqlc code
+    cmds:
+      - sqlc generate
+
+  db:migrate:
+    desc: Run goose migrations
+    cmds:
+      - goose -dir migrations postgres "{{.DATABASE_URL}}" up
+
+  db:migrate:down:
+    desc: Rollback one migration
+    cmds:
+      - goose -dir migrations postgres "{{.DATABASE_URL}}" down
+
+  db:status:
+    desc: Check migration status
+    cmds:
+      - goose -dir migrations postgres "{{.DATABASE_URL}}" status
+
+  db:create:
+    desc: Create a new migration
+    cmds:
+      - goose -dir migrations create {{.CLI_ARGS}} sql
+
+  setup:
+    desc: Install all dependencies
+    cmds:
+      - go mod download
+      - npm install
+      - go install github.com/air-verse/air@latest
+      - go install github.com/a-h/templ/cmd/templ@latest
+      - go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+      - go install github.com/pressly/goose/v3/cmd/goose@latest
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf tmp/*
+      - rm -f static/css/output.css

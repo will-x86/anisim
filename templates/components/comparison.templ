@@ -1,0 +1,46 @@
+package components
+
+import (
+	"fmt"
+	"github.com/will-x86/anisim/internal/db"
+)
+
+templ ComparisonCard(c db.Comparison) {
+	<div class="border p-4">
+		<div class="flex justify-between items-center">
+			<div>
+				<span class="font-medium">{ c.CreatorUsername }</span>
+				<span class="text-gray-400 mx-2">vs</span>
+				<span class="font-medium">{ c.ComparatorUsername }</span>
+			</div>
+			<a href={ templ.SafeURL(fmt.Sprintf("/comparisons/%d", c.ID)) } class="text-blue-600 hover:text-blue-800">
+				View
+			</a>
+		</div>
+	</div>
+}
+
+templ CreateComparisonForm() {
+	<form method="POST" action="/comparisons" class="border p-4">
+		<h2 class="font-semibold mb-4">Create Comparison</h2>
+		<div class="space-y-2">
+			<input
+				type="text"
+				name="creator_username"
+				placeholder="Your AniList username"
+				required
+				class="w-full border p-2"
+			/>
+			<input
+				type="text"
+				name="comparator_username"
+				placeholder="Their AniList username"
+				required
+				class="w-full border p-2"
+			/>
+			<button type="submit" class="w-full bg-blue-600 text-white p-2 hover:bg-blue-700">
+				Create
+			</button>
+		</div>
+	</form>
+}

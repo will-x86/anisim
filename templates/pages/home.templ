@@ -1,0 +1,26 @@
+package pages
+
+import (
+	"github.com/will-x86/anisim/internal/db"
+	"github.com/will-x86/anisim/templates/components"
+	"github.com/will-x86/anisim/templates/layouts"
+)
+
+templ Home(comparisons []db.Comparison) {
+	@layouts.Base("AniSim") {
+		<div class="max-w-2xl mx-auto space-y-6">
+			<header>
+				<h1 class="text-2xl font-bold">AniSim</h1>
+				<p class="text-gray-600">Compare AniList profiles</p>
+			</header>
+			@components.CreateComparisonForm()
+			if len(comparisons) > 0 {
+				<div class="space-y-2">
+					for _, comparison := range comparisons {
+						@components.ComparisonCard(comparison)
+					}
+				</div>
+			}
+		</div>
+	}
+}

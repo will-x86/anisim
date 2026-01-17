@@ -1,0 +1,31 @@
+package pages
+
+import (
+	"github.com/will-x86/anisim/internal/types"
+	"github.com/will-x86/anisim/templates/components"
+	"github.com/will-x86/anisim/templates/layouts"
+)
+
+templ ComparisonDetail(c types.Comparison) {
+	@layouts.Base("Comparison") {
+		<div class="max-w-2xl mx-auto">
+			<a href="/" class="text-blue-600 hover:text-blue-800 mb-4 inline-block">← Back</a>
+			<div class="border p-6">
+				<h1 class="text-2xl font-bold mb-4">AniSim</h1>
+				<div class="grid grid-flow-col grid-rows 2 gap-4">
+					<div class="row-span-1 font-medium">
+						<span class="font-medium">Creator:</span> { c.CreatorUsername }
+						@components.DetailCard(c.CreatorUser)
+					</div>
+					<div class="row-span-2 font-medium">
+						<span class="font-medium">Comparator:</span> { c.ComparatorUsername }
+						@components.DetailCard(c.ComparatorUser)
+					</div>
+				</div>
+				<div class="text-sm text-gray-500">
+					Created: { c.Created.Format("Jan 2, 2006") }
+				</div>
+			</div>
+		</div>
+	}
+}

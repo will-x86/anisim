@@ -1,0 +1,18 @@
+package components
+
+import "github.com/will-x86/anisim/internal/types"
+
+templ DetailCard(c types.User) {
+	<div class="border p-6">
+		<h1 class="text-2xl font-bold mb-4">{ c.Name }</h1>
+		<img src={ c.Avatar.Medium } alt="Avatar" class="w-24 h-24 rounded-full mb-4"/>
+		<div class="space-y-2">
+			<div>
+				<span class="font-medium">EpisodesWatched:</span> { c.Statistics.Anime.EpisodesWatched }
+				<span class="font-medium">MinutesWatched:</span> { c.Statistics.Anime.MinutesWatched }
+				<span class="font-medium">ChaptersRead:</span> { c.Statistics.Anime.EpisodesWatched }
+				<span class="font-medium">MeanScore:</span> { c.Statistics.Manga.MeanScore }
+			</div>
+		</div>
+	</div>
+}
