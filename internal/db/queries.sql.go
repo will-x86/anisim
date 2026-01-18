@@ -7,43 +7,166 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createComparison = `-- name: CreateComparison :one
-INSERT INTO comparisons (creator_username, comparator_username)
-VALUES ($1, $2)
-RETURNING id, creator_username, comparator_username, comparison_date
+INSERT INTO comparisons (
+    creator_username,
+    comparator_username,
+    creator_id,
+    creator_name,
+    creator_avatar_large,
+    creator_avatar_medium,
+    creator_episodes_watched,
+    creator_minutes_watched,
+    creator_chapters_read,
+    creator_mean_score,
+    comparator_id,
+    comparator_name,
+    comparator_avatar_large,
+    comparator_avatar_medium,
+    comparator_episodes_watched,
+    comparator_minutes_watched,
+    comparator_chapters_read,
+    comparator_mean_score
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+RETURNING id, creator_username, comparator_username, comparison_date, creator_id, creator_name, creator_avatar_large, creator_avatar_medium, creator_episodes_watched, creator_minutes_watched, creator_chapters_read, creator_mean_score, comparator_id, comparator_name, comparator_avatar_large, comparator_avatar_medium, comparator_episodes_watched, comparator_minutes_watched, comparator_chapters_read, comparator_mean_score
 `
 
 type CreateComparisonParams struct {
-	CreatorUsername    string `json:"creator_username"`
-	ComparatorUsername string `json:"comparator_username"`
+	CreatorUsername           string        `json:"creator_username"`
+	ComparatorUsername        string        `json:"comparator_username"`
+	CreatorID                 pgtype.Int4   `json:"creator_id"`
+	CreatorName               pgtype.Text   `json:"creator_name"`
+	CreatorAvatarLarge        pgtype.Text   `json:"creator_avatar_large"`
+	CreatorAvatarMedium       pgtype.Text   `json:"creator_avatar_medium"`
+	CreatorEpisodesWatched    pgtype.Int4   `json:"creator_episodes_watched"`
+	CreatorMinutesWatched     pgtype.Int4   `json:"creator_minutes_watched"`
+	CreatorChaptersRead       pgtype.Int4   `json:"creator_chapters_read"`
+	CreatorMeanScore          pgtype.Float8 `json:"creator_mean_score"`
+	ComparatorID              pgtype.Int4   `json:"comparator_id"`
+	ComparatorName            pgtype.Text   `json:"comparator_name"`
+	ComparatorAvatarLarge     pgtype.Text   `json:"comparator_avatar_large"`
+	ComparatorAvatarMedium    pgtype.Text   `json:"comparator_avatar_medium"`
+	ComparatorEpisodesWatched pgtype.Int4   `json:"comparator_episodes_watched"`
+	ComparatorMinutesWatched  pgtype.Int4   `json:"comparator_minutes_watched"`
+	ComparatorChaptersRead    pgtype.Int4   `json:"comparator_chapters_read"`
+	ComparatorMeanScore       pgtype.Float8 `json:"comparator_mean_score"`
 }
 
 func (q *Queries) CreateComparison(ctx context.Context, arg CreateComparisonParams) (Comparison, error) {
-	row := q.db.QueryRow(ctx, createComparison, arg.CreatorUsername, arg.ComparatorUsername)
+	row := q.db.QueryRow(ctx, createComparison,
+		arg.CreatorUsername,
+		arg.ComparatorUsername,
+		arg.CreatorID,
+		arg.CreatorName,
+		arg.CreatorAvatarLarge,
+		arg.CreatorAvatarMedium,
+		arg.CreatorEpisodesWatched,
+		arg.CreatorMinutesWatched,
+		arg.CreatorChaptersRead,
+		arg.CreatorMeanScore,
+		arg.ComparatorID,
+		arg.ComparatorName,
+		arg.ComparatorAvatarLarge,
+		arg.ComparatorAvatarMedium,
+		arg.ComparatorEpisodesWatched,
+		arg.ComparatorMinutesWatched,
+		arg.ComparatorChaptersRead,
+		arg.ComparatorMeanScore,
+	)
 	var i Comparison
 	err := row.Scan(
 		&i.ID,
 		&i.CreatorUsername,
 		&i.ComparatorUsername,
 		&i.ComparisonDate,
+		&i.CreatorID,
+		&i.CreatorName,
+		&i.CreatorAvatarLarge,
+		&i.CreatorAvatarMedium,
+		&i.CreatorEpisodesWatched,
+		&i.CreatorMinutesWatched,
+		&i.CreatorChaptersRead,
+		&i.CreatorMeanScore,
+		&i.ComparatorID,
+		&i.ComparatorName,
+		&i.ComparatorAvatarLarge,
+		&i.ComparatorAvatarMedium,
+		&i.ComparatorEpisodesWatched,
+		&i.ComparatorMinutesWatched,
+		&i.ComparatorChaptersRead,
+		&i.ComparatorMeanScore,
 	)
 	return i, err
 }
 
-const deleteComparison = `-- name: DeleteComparison :exec
-DELETE FROM comparisons
-WHERE id = $1
+const createSharedEntry = `-- name: CreateSharedEntry :one
+INSERT INTO shared_entries (
+    comparison_id,
+    media_type,
+    media_id,
+    media_title_romaji,
+    media_title_english,
+    media_cover_large,
+    media_cover_medium,
+    status,
+    creator_score,
+    comparator_score
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, comparison_id, media_type, media_id, media_title_romaji, media_title_english, media_cover_large, media_cover_medium, status, creator_score, comparator_score, created_at
 `
 
-func (q *Queries) DeleteComparison(ctx context.Context, id int32) error {
-	_, err := q.db.Exec(ctx, deleteComparison, id)
-	return err
+type CreateSharedEntryParams struct {
+	ComparisonID      int32         `json:"comparison_id"`
+	MediaType         string        `json:"media_type"`
+	MediaID           int32         `json:"media_id"`
+	MediaTitleRomaji  string        `json:"media_title_romaji"`
+	MediaTitleEnglish pgtype.Text   `json:"media_title_english"`
+	MediaCoverLarge   pgtype.Text   `json:"media_cover_large"`
+	MediaCoverMedium  pgtype.Text   `json:"media_cover_medium"`
+	Status            string        `json:"status"`
+	CreatorScore      pgtype.Float8 `json:"creator_score"`
+	ComparatorScore   pgtype.Float8 `json:"comparator_score"`
+}
+
+func (q *Queries) CreateSharedEntry(ctx context.Context, arg CreateSharedEntryParams) (SharedEntry, error) {
+	row := q.db.QueryRow(ctx, createSharedEntry,
+		arg.ComparisonID,
+		arg.MediaType,
+		arg.MediaID,
+		arg.MediaTitleRomaji,
+		arg.MediaTitleEnglish,
+		arg.MediaCoverLarge,
+		arg.MediaCoverMedium,
+		arg.Status,
+		arg.CreatorScore,
+		arg.ComparatorScore,
+	)
+	var i SharedEntry
+	err := row.Scan(
+		&i.ID,
+		&i.ComparisonID,
+		&i.MediaType,
+		&i.MediaID,
+		&i.MediaTitleRomaji,
+		&i.MediaTitleEnglish,
+		&i.MediaCoverLarge,
+		&i.MediaCoverMedium,
+		&i.Status,
+		&i.CreatorScore,
+		&i.ComparatorScore,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const getAllComparisons = `-- name: GetAllComparisons :many
-SELECT id, creator_username, comparator_username, comparison_date FROM comparisons
+SELECT id, creator_username, comparator_username, comparison_date, creator_id, creator_name, creator_avatar_large, creator_avatar_medium, creator_episodes_watched, creator_minutes_watched, creator_chapters_read, creator_mean_score, comparator_id, comparator_name, comparator_avatar_large, comparator_avatar_medium, comparator_episodes_watched, comparator_minutes_watched, comparator_chapters_read, comparator_mean_score FROM comparisons
 ORDER BY comparison_date DESC
 `
 
@@ -61,6 +184,22 @@ func (q *Queries) GetAllComparisons(ctx context.Context) ([]Comparison, error) {
 			&i.CreatorUsername,
 			&i.ComparatorUsername,
 			&i.ComparisonDate,
+			&i.CreatorID,
+			&i.CreatorName,
+			&i.CreatorAvatarLarge,
+			&i.CreatorAvatarMedium,
+			&i.CreatorEpisodesWatched,
+			&i.CreatorMinutesWatched,
+			&i.CreatorChaptersRead,
+			&i.CreatorMeanScore,
+			&i.ComparatorID,
+			&i.ComparatorName,
+			&i.ComparatorAvatarLarge,
+			&i.ComparatorAvatarMedium,
+			&i.ComparatorEpisodesWatched,
+			&i.ComparatorMinutesWatched,
+			&i.ComparatorChaptersRead,
+			&i.ComparatorMeanScore,
 		); err != nil {
 			return nil, err
 		}
@@ -73,7 +212,7 @@ func (q *Queries) GetAllComparisons(ctx context.Context) ([]Comparison, error) {
 }
 
 const getComparison = `-- name: GetComparison :one
-SELECT id, creator_username, comparator_username, comparison_date FROM comparisons
+SELECT id, creator_username, comparator_username, comparison_date, creator_id, creator_name, creator_avatar_large, creator_avatar_medium, creator_episodes_watched, creator_minutes_watched, creator_chapters_read, creator_mean_score, comparator_id, comparator_name, comparator_avatar_large, comparator_avatar_medium, comparator_episodes_watched, comparator_minutes_watched, comparator_chapters_read, comparator_mean_score FROM comparisons
 WHERE id = $1
 `
 
@@ -85,30 +224,54 @@ func (q *Queries) GetComparison(ctx context.Context, id int32) (Comparison, erro
 		&i.CreatorUsername,
 		&i.ComparatorUsername,
 		&i.ComparisonDate,
+		&i.CreatorID,
+		&i.CreatorName,
+		&i.CreatorAvatarLarge,
+		&i.CreatorAvatarMedium,
+		&i.CreatorEpisodesWatched,
+		&i.CreatorMinutesWatched,
+		&i.CreatorChaptersRead,
+		&i.CreatorMeanScore,
+		&i.ComparatorID,
+		&i.ComparatorName,
+		&i.ComparatorAvatarLarge,
+		&i.ComparatorAvatarMedium,
+		&i.ComparatorEpisodesWatched,
+		&i.ComparatorMinutesWatched,
+		&i.ComparatorChaptersRead,
+		&i.ComparatorMeanScore,
 	)
 	return i, err
 }
 
-const getComparisonsByCreator = `-- name: GetComparisonsByCreator :many
-SELECT id, creator_username, comparator_username, comparison_date FROM comparisons
-WHERE creator_username = $1
-ORDER BY comparison_date DESC
+const getSharedEntriesByComparison = `-- name: GetSharedEntriesByComparison :many
+SELECT id, comparison_id, media_type, media_id, media_title_romaji, media_title_english, media_cover_large, media_cover_medium, status, creator_score, comparator_score, created_at FROM shared_entries
+WHERE comparison_id = $1
+ORDER BY status, media_title_romaji
 `
 
-func (q *Queries) GetComparisonsByCreator(ctx context.Context, creatorUsername string) ([]Comparison, error) {
-	rows, err := q.db.Query(ctx, getComparisonsByCreator, creatorUsername)
+func (q *Queries) GetSharedEntriesByComparison(ctx context.Context, comparisonID int32) ([]SharedEntry, error) {
+	rows, err := q.db.Query(ctx, getSharedEntriesByComparison, comparisonID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Comparison{}
+	items := []SharedEntry{}
 	for rows.Next() {
-		var i Comparison
+		var i SharedEntry
 		if err := rows.Scan(
 			&i.ID,
-			&i.CreatorUsername,
-			&i.ComparatorUsername,
-			&i.ComparisonDate,
+			&i.ComparisonID,
+			&i.MediaType,
+			&i.MediaID,
+			&i.MediaTitleRomaji,
+			&i.MediaTitleEnglish,
+			&i.MediaCoverLarge,
+			&i.MediaCoverMedium,
+			&i.Status,
+			&i.CreatorScore,
+			&i.ComparatorScore,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

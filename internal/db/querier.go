@@ -10,10 +10,10 @@ import (
 
 type Querier interface {
 	CreateComparison(ctx context.Context, arg CreateComparisonParams) (Comparison, error)
-	DeleteComparison(ctx context.Context, id int32) error
+	CreateSharedEntry(ctx context.Context, arg CreateSharedEntryParams) (SharedEntry, error)
 	GetAllComparisons(ctx context.Context) ([]Comparison, error)
 	GetComparison(ctx context.Context, id int32) (Comparison, error)
-	GetComparisonsByCreator(ctx context.Context, creatorUsername string) ([]Comparison, error)
+	GetSharedEntriesByComparison(ctx context.Context, comparisonID int32) ([]SharedEntry, error)
 }
 
 var _ Querier = (*Queries)(nil)

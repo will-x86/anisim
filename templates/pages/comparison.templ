@@ -10,12 +10,23 @@ import (
 templ ComparisonDetail(c types.Comparison, analyzer analyzer.ComparisonResult) {
 	@layouts.Base("Comparison") {
 		<div>
-			<a href="/" class="text-blue-600 hover:text-blue-800 mb-4 inline-block">← Back</a>
+			<div class="flex justify-between items-center mb-4">
+				<a href="/" class="text-blue-600 hover:text-blue-800">← Back</a>
+			</div>
 			<div class="border p-6">
 				<h1 class="text-2xl font-bold mb-4">AniSim</h1>
 				@components.ComparisonView(c, analyzer)
-				<div class="text-sm text-gray-500">
-					Created: { c.Created.Format("Jan 2, 2006") }
+				<div class="flex justify-between items-center mt-4">
+					<div class="text-sm text-gray-500">
+						Created: { c.Created.Format("Jan 2, 2006") }
+					</div>
+					<form method="POST" action="/comparisons">
+						<input type="hidden" name="creator_username" value={ c.CreatorUsername }/>
+						<input type="hidden" name="comparator_username" value={ c.ComparatorUsername }/>
+						<button type="submit" class="bg-green-600 text-gray-500 px-4 py-2 hover:bg-green-700 rounded">
+							Refresh Comparison
+						</button>
+					</form>
 				</div>
 			</div>
 		</div>

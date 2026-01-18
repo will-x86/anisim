@@ -9,8 +9,39 @@ import (
 )
 
 type Comparison struct {
-	ID                 int32            `json:"id"`
-	CreatorUsername    string           `json:"creator_username"`
-	ComparatorUsername string           `json:"comparator_username"`
-	ComparisonDate     pgtype.Timestamp `json:"comparison_date"`
+	ID                        int32            `json:"id"`
+	CreatorUsername           string           `json:"creator_username"`
+	ComparatorUsername        string           `json:"comparator_username"`
+	ComparisonDate            pgtype.Timestamp `json:"comparison_date"`
+	CreatorID                 pgtype.Int4      `json:"creator_id"`
+	CreatorName               pgtype.Text      `json:"creator_name"`
+	CreatorAvatarLarge        pgtype.Text      `json:"creator_avatar_large"`
+	CreatorAvatarMedium       pgtype.Text      `json:"creator_avatar_medium"`
+	CreatorEpisodesWatched    pgtype.Int4      `json:"creator_episodes_watched"`
+	CreatorMinutesWatched     pgtype.Int4      `json:"creator_minutes_watched"`
+	CreatorChaptersRead       pgtype.Int4      `json:"creator_chapters_read"`
+	CreatorMeanScore          pgtype.Float8    `json:"creator_mean_score"`
+	ComparatorID              pgtype.Int4      `json:"comparator_id"`
+	ComparatorName            pgtype.Text      `json:"comparator_name"`
+	ComparatorAvatarLarge     pgtype.Text      `json:"comparator_avatar_large"`
+	ComparatorAvatarMedium    pgtype.Text      `json:"comparator_avatar_medium"`
+	ComparatorEpisodesWatched pgtype.Int4      `json:"comparator_episodes_watched"`
+	ComparatorMinutesWatched  pgtype.Int4      `json:"comparator_minutes_watched"`
+	ComparatorChaptersRead    pgtype.Int4      `json:"comparator_chapters_read"`
+	ComparatorMeanScore       pgtype.Float8    `json:"comparator_mean_score"`
+}
+
+type SharedEntry struct {
+	ID                int32            `json:"id"`
+	ComparisonID      int32            `json:"comparison_id"`
+	MediaType         string           `json:"media_type"`
+	MediaID           int32            `json:"media_id"`
+	MediaTitleRomaji  string           `json:"media_title_romaji"`
+	MediaTitleEnglish pgtype.Text      `json:"media_title_english"`
+	MediaCoverLarge   pgtype.Text      `json:"media_cover_large"`
+	MediaCoverMedium  pgtype.Text      `json:"media_cover_medium"`
+	Status            string           `json:"status"`
+	CreatorScore      pgtype.Float8    `json:"creator_score"`
+	ComparatorScore   pgtype.Float8    `json:"comparator_score"`
+	CreatedAt         pgtype.Timestamp `json:"created_at"`
 }

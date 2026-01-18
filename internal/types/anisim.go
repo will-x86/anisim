@@ -5,6 +5,7 @@ import (
 )
 
 type Comparison struct {
+	ID                 int
 	CreatorUsername    string
 	ComparatorUsername string
 	Creator            User
