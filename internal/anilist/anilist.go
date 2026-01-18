@@ -2,6 +2,8 @@ package anilist
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/machinebox/graphql"
 	"github.com/will-x86/anisim/internal/types"
@@ -9,107 +11,231 @@ import (
 
 var client *graphql.Client
 
+type RateLimitError struct {
+	RetryAfter int
+	ResetAt    time.Time
+}
+
+func (e *RateLimitError) Error() string {
+	return fmt.Sprintf("rate limit exceeded, retry after %d seconds", e.RetryAfter)
+}
+
 func SetupClient(endpoint string) {
 	client = graphql.NewClient(endpoint)
 }
 
-// Returns anime, manga, then error
+func runWithRateLimit(ctx context.Context, req *graphql.Request, resp any) error {
+	err := client.Run(ctx, req, resp)
+	if err != nil {
+		if err.Error() == "Too Many Requests." || err.Error() == "graphql: Too Many Requests." {
+			return &RateLimitError{
+				RetryAfter: 60, // machinebox doesn't provide headers
+			}
+		}
+		return err
+	}
+	return nil
+}
+
+// GetUsersMediaListCollection returns anime, manga, then error
 func GetUsersMediaListCollection(id int) (types.MediaListCollection, types.MediaListCollection, error) {
 	query := `
-query ($type: MediaType!, $userId: Int!) {
-  MediaListCollection(type: $type, userId: $userId) {
-    lists {
-      name
-      status
-      entries {
-        id
-        media {
-          title {
-            romaji
-            english
-          }
-          coverImage {
-            large
-            medium
-          }
-        }
-		mediaId
-        progress
-        score
-        startedAt {
-          year
-          month
-        }
-        status
-        progressVolumes
-      }
-      isCustomList
-    }
-  }
-}`
+	query ($userId: Int!) {
+		anime: MediaListCollection(type: ANIME, userId: $userId) {
+			lists {
+				name
+				status
+				entries {
+					id
+					media {
+						title {
+							romaji
+							english
+						}
+						coverImage {
+							large
+							medium
+						}
+					}
+					mediaId
+					progress
+					score
+					startedAt {
+						year
+						month
+					}
+					status
+					progressVolumes
+				}
+				isCustomList
+			}
+		}
+		manga: MediaListCollection(type: MANGA, userId: $userId) {
+			lists {
+				name
+				status
+				entries {
+					id
+					media {
+						title {
+							romaji
+							english
+						}
+						coverImage {
+							large
+							medium
+						}
+					}
+					mediaId
+					progress
+					score
+					startedAt {
+						year
+						month
+					}
+					status
+					progressVolumes
+				}
+				isCustomList
+			}
+		}
+	}`
 
 	ctx := context.Background()
 
-	// Fetch Anime
-	animeReq := graphql.NewRequest(query)
-	animeReq.Var("userId", id)
-	animeReq.Var("type", "ANIME")
+	req := graphql.NewRequest(query)
+	req.Var("userId", id)
 
-	var animeResp struct {
-		MediaListCollection types.MediaListCollection `json:"MediaListCollection"`
+	var resp struct {
+		Anime types.MediaListCollection `json:"anime"`
+		Manga types.MediaListCollection `json:"manga"`
 	}
 
-	if err := client.Run(ctx, animeReq, &animeResp); err != nil {
+	if err := runWithRateLimit(ctx, req, &resp); err != nil {
 		return types.MediaListCollection{}, types.MediaListCollection{}, err
 	}
 
-	// Fetch Manga
-	mangaReq := graphql.NewRequest(query)
-	mangaReq.Var("userId", id)
-	mangaReq.Var("type", "MANGA")
-
-	var mangaResp struct {
-		MediaListCollection types.MediaListCollection `json:"MediaListCollection"`
-	}
-
-	if err := client.Run(ctx, mangaReq, &mangaResp); err != nil {
-		return types.MediaListCollection{}, types.MediaListCollection{}, err
-	}
-
-	return animeResp.MediaListCollection, mangaResp.MediaListCollection, nil
+	return resp.Anime, resp.Manga, nil
 }
+
 func GetBasicUserInfo(username string) (types.User, error) {
-	req := graphql.NewRequest(`query ($username: String) {
-User(name: $username) {
-    id
-    name
-    avatar {
-      large
-      medium
-    }
-    createdAt
-    statistics {
-      anime {
-        episodesWatched
-		minutesWatched
-      }
-      manga {
-        chaptersRead
-        meanScore
-      }
-    }
-  }
-}
-`)
+	req := graphql.NewRequest(`
+		query ($username: String) {
+			User(name: $username) {
+				id
+				name
+				avatar {
+					large
+					medium
+				}
+				createdAt
+				statistics {
+					anime {
+						episodesWatched
+						minutesWatched
+					}
+					manga {
+						chaptersRead
+						meanScore
+					}
+				}
+			}
+		}
+	`)
+
 	req.Var("username", username)
 	ctx := context.Background()
+
 	var respData struct {
 		User types.User `json:"User"`
 	}
 
-	if err := client.Run(ctx, req, &respData); err != nil {
+	if err := runWithRateLimit(ctx, req, &respData); err != nil {
 		return types.User{}, err
 	}
-	return respData.User, nil
 
+	return respData.User, nil
+}
+
+func GetComparisonData(creatorUsername, comparatorUsername string) (
+	creatorUser types.User,
+	creatorAnime types.MediaListCollection,
+	creatorManga types.MediaListCollection,
+	comparatorUser types.User,
+	comparatorAnime types.MediaListCollection,
+	comparatorManga types.MediaListCollection,
+	err error,
+) {
+	query := `
+	query ($creatorUsername: String, $comparatorUsername: String) {
+		creator: User(name: $creatorUsername) {
+			id
+			name
+			avatar {
+				large
+				medium
+			}
+			createdAt
+			statistics {
+				anime {
+					episodesWatched
+					minutesWatched
+				}
+				manga {
+					chaptersRead
+					meanScore
+				}
+			}
+		}
+		comparator: User(name: $comparatorUsername) {
+			id
+			name
+			avatar {
+				large
+				medium
+			}
+			createdAt
+			statistics {
+				anime {
+					episodesWatched
+					minutesWatched
+				}
+				manga {
+					chaptersRead
+					meanScore
+				}
+			}
+		}
+	}`
+
+	ctx := context.Background()
+	req := graphql.NewRequest(query)
+	req.Var("creatorUsername", creatorUsername)
+	req.Var("comparatorUsername", comparatorUsername)
+
+	var resp struct {
+		Creator    types.User `json:"creator"`
+		Comparator types.User `json:"comparator"`
+	}
+
+	if err := runWithRateLimit(ctx, req, &resp); err != nil {
+		return types.User{}, types.MediaListCollection{}, types.MediaListCollection{},
+			types.User{}, types.MediaListCollection{}, types.MediaListCollection{}, err
+	}
+
+	// Now fetch media lists with the user IDs we just got
+	creatorAnime, creatorManga, err = GetUsersMediaListCollection(resp.Creator.ID)
+	if err != nil {
+		return types.User{}, types.MediaListCollection{}, types.MediaListCollection{},
+			types.User{}, types.MediaListCollection{}, types.MediaListCollection{}, err
+	}
+
+	comparatorAnime, comparatorManga, err = GetUsersMediaListCollection(resp.Comparator.ID)
+	if err != nil {
+		return types.User{}, types.MediaListCollection{}, types.MediaListCollection{},
+			types.User{}, types.MediaListCollection{}, types.MediaListCollection{}, err
+	}
+
+	return resp.Creator, creatorAnime, creatorManga,
+		resp.Comparator, comparatorAnime, comparatorManga, nil
 }

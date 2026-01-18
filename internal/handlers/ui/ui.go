@@ -2,6 +2,8 @@ package ui
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -29,7 +31,6 @@ func NewHandler(dbPool *pgxpool.Pool) *Handler {
 
 func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
-
 	comparisons, err := h.queries.GetAllComparisons(ctx)
 	if err != nil {
 		log.Printf("Error fetching comparisons: %v", err)
@@ -43,7 +44,6 @@ func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleComparisonDetail(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
-
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.ParseInt(idStr, 10, 32)
 	if err != nil {
@@ -57,44 +57,39 @@ func (h *Handler) HandleComparisonDetail(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Comparison not found", http.StatusNotFound)
 		return
 	}
+
 	comparison := types.Comparison{
 		CreatorUsername:    dBcomparison.CreatorUsername,
 		ComparatorUsername: dBcomparison.ComparatorUsername,
 		Created:            dBcomparison.ComparisonDate.Time,
 	}
-	creatorAnilistUser, err := anilist.GetBasicUserInfo(dBcomparison.CreatorUsername)
+
+	creatorUser, creatorAnimeList, creatorMangaList,
+		comparatorUser, comparatorAnimeList, comparatorMangaList, err := anilist.GetComparisonData(
+		dBcomparison.CreatorUsername,
+		dBcomparison.ComparatorUsername,
+	)
 	if err != nil {
-		log.Printf("Error fetching creator Anilist user: %v", err)
-		http.Error(w, "Failed to load creator user data", http.StatusInternalServerError)
+		var rateLimitErr *anilist.RateLimitError
+		if errors.As(err, &rateLimitErr) {
+			http.Error(w, fmt.Sprintf("AniList API rate limit exceeded. Please try again in %d seconds.", rateLimitErr.RetryAfter), http.StatusTooManyRequests)
+			return
+		}
+		log.Printf("Error fetching comparison data: %v", err)
+		http.Error(w, "Failed to load comparison data", http.StatusInternalServerError)
 		return
 	}
-	// Gets basic user info, get media list later
-	comparatorAnilistUser, err := anilist.GetBasicUserInfo(dBcomparison.ComparatorUsername)
-	if err != nil {
-		log.Printf("Error fetching comparator Anilist user: %v", err)
-		http.Error(w, "Failed to load comparator user data", http.StatusInternalServerError)
-		return
-	}
-	comparison.Creator = creatorAnilistUser
-	comparison.Comparator = comparatorAnilistUser
-	creatorAnimeList, creatorMangaList, err := anilist.GetUsersMediaListCollection(creatorAnilistUser.ID)
-	if err != nil {
-		log.Printf("Error fetching creator media list: %v", err)
-		http.Error(w, "Failed to load creator media list", http.StatusInternalServerError)
-		return
-	}
-	comparatorAnimeList, comparatorMangaList, err := anilist.GetUsersMediaListCollection(comparatorAnilistUser.ID)
-	if err != nil {
-		log.Printf("Error fetching comparator media list: %v", err)
-		http.Error(w, "Failed to load comparator media list", http.StatusInternalServerError)
-		return
-	}
+
+	comparison.Creator = creatorUser
+	comparison.Comparator = comparatorUser
+
 	analyzerOptions := analyzer.AnalyzeComparisonsOptions{
 		CreatorAnimeList:    creatorAnimeList,
 		CreatorMangaList:    creatorMangaList,
 		ComparatorAnimeList: comparatorAnimeList,
 		ComparatorMangaList: comparatorMangaList,
 	}
+
 	result := analyzer.AnalyzeComparisons(analyzerOptions)
 
 	component := pages.ComparisonDetail(comparison, result)
