@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/will-x86/anisim/internal/analyzer"
 	"github.com/will-x86/anisim/internal/anilist"
 	"github.com/will-x86/anisim/internal/db"
 	"github.com/will-x86/anisim/internal/types"
@@ -56,26 +57,47 @@ func (h *Handler) HandleComparisonDetail(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Comparison not found", http.StatusNotFound)
 		return
 	}
-	var comparison types.Comparison
-	comparison.CreatorUsername = dBcomparison.CreatorUsername
-	comparison.ComparatorUsername = dBcomparison.ComparatorUsername
-	comparison.Created = dBcomparison.ComparisonDate.Time
+	comparison := types.Comparison{
+		CreatorUsername:    dBcomparison.CreatorUsername,
+		ComparatorUsername: dBcomparison.ComparatorUsername,
+		Created:            dBcomparison.ComparisonDate.Time,
+	}
 	creatorAnilistUser, err := anilist.GetBasicUserInfo(dBcomparison.CreatorUsername)
 	if err != nil {
 		log.Printf("Error fetching creator Anilist user: %v", err)
 		http.Error(w, "Failed to load creator user data", http.StatusInternalServerError)
 		return
 	}
+	// Gets basic user info, get media list later
 	comparatorAnilistUser, err := anilist.GetBasicUserInfo(dBcomparison.ComparatorUsername)
 	if err != nil {
 		log.Printf("Error fetching comparator Anilist user: %v", err)
 		http.Error(w, "Failed to load comparator user data", http.StatusInternalServerError)
 		return
 	}
-	comparison.CreatorUser = creatorAnilistUser
-	comparison.ComparatorUser = comparatorAnilistUser
+	comparison.Creator = creatorAnilistUser
+	comparison.Comparator = comparatorAnilistUser
+	creatorAnimeList, creatorMangaList, err := anilist.GetUsersMediaListCollection(creatorAnilistUser.ID)
+	if err != nil {
+		log.Printf("Error fetching creator media list: %v", err)
+		http.Error(w, "Failed to load creator media list", http.StatusInternalServerError)
+		return
+	}
+	comparatorAnimeList, comparatorMangaList, err := anilist.GetUsersMediaListCollection(comparatorAnilistUser.ID)
+	if err != nil {
+		log.Printf("Error fetching comparator media list: %v", err)
+		http.Error(w, "Failed to load comparator media list", http.StatusInternalServerError)
+		return
+	}
+	analyzerOptions := analyzer.AnalyzeComparisonsOptions{
+		CreatorAnimeList:    creatorAnimeList,
+		CreatorMangaList:    creatorMangaList,
+		ComparatorAnimeList: comparatorAnimeList,
+		ComparatorMangaList: comparatorMangaList,
+	}
+	result := analyzer.AnalyzeComparisons(analyzerOptions)
 
-	component := pages.ComparisonDetail(comparison)
+	component := pages.ComparisonDetail(comparison, result)
 	templ.Handler(component).ServeHTTP(w, r)
 }
 
