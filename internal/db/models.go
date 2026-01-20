@@ -63,15 +63,7 @@ type MediaCacheQueue struct {
 	UpdatedAt  pgtype.Timestamp `json:"updated_at"`
 }
 
-type MediaTag struct {
-	MediaID          int32       `json:"media_id"`
-	TagID            int32       `json:"tag_id"`
-	Rank             int32       `json:"rank"`
-	IsMediaSpoiler   pgtype.Bool `json:"is_media_spoiler"`
-	IsGeneralSpoiler pgtype.Bool `json:"is_general_spoiler"`
-}
-
-type SharedEntry struct {
+type MediaEntry struct {
 	ID                int32            `json:"id"`
 	ComparisonID      int32            `json:"comparison_id"`
 	MediaType         string           `json:"media_type"`
@@ -85,6 +77,16 @@ type SharedEntry struct {
 	CreatedAt         pgtype.Timestamp `json:"created_at"`
 	CreatorStatus     string           `json:"creator_status"`
 	ComparatorStatus  string           `json:"comparator_status"`
+	InCreatorList     bool             `json:"in_creator_list"`
+	InComparatorList  bool             `json:"in_comparator_list"`
+}
+
+type MediaTag struct {
+	MediaID          int32       `json:"media_id"`
+	TagID            int32       `json:"tag_id"`
+	Rank             int32       `json:"rank"`
+	IsMediaSpoiler   pgtype.Bool `json:"is_media_spoiler"`
+	IsGeneralSpoiler pgtype.Bool `json:"is_general_spoiler"`
 }
 
 type Tag struct {

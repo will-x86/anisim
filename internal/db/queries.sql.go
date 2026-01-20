@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type BatchCreateSharedEntriesParams struct {
+type BatchCreateMediaEntriesParams struct {
 	ComparisonID      int32         `json:"comparison_id"`
 	MediaType         string        `json:"media_type"`
 	MediaID           int32         `json:"media_id"`
@@ -23,6 +23,8 @@ type BatchCreateSharedEntriesParams struct {
 	ComparatorStatus  string        `json:"comparator_status"`
 	CreatorScore      pgtype.Float8 `json:"creator_score"`
 	ComparatorScore   pgtype.Float8 `json:"comparator_score"`
+	InCreatorList     bool          `json:"in_creator_list"`
+	InComparatorList  bool          `json:"in_comparator_list"`
 }
 
 type BatchEnqueueMediaForCachingParams struct {
@@ -123,8 +125,8 @@ func (q *Queries) CreateComparison(ctx context.Context, arg CreateComparisonPara
 	return i, err
 }
 
-const createSharedEntry = `-- name: CreateSharedEntry :one
-INSERT INTO shared_entries (
+const createMediaEntry = `-- name: CreateMediaEntry :one
+INSERT INTO media_entries (
     comparison_id,
     media_type,
     media_id,
@@ -135,13 +137,15 @@ INSERT INTO shared_entries (
     creator_status,
     comparator_status,
     creator_score,
-    comparator_score
+    comparator_score,
+    in_creator_list,
+    in_comparator_list
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, comparison_id, media_type, media_id, media_title_romaji, media_title_english, media_cover_large, media_cover_medium, creator_score, comparator_score, created_at, creator_status, comparator_status
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+RETURNING id, comparison_id, media_type, media_id, media_title_romaji, media_title_english, media_cover_large, media_cover_medium, creator_score, comparator_score, created_at, creator_status, comparator_status, in_creator_list, in_comparator_list
 `
 
-type CreateSharedEntryParams struct {
+type CreateMediaEntryParams struct {
 	ComparisonID      int32         `json:"comparison_id"`
 	MediaType         string        `json:"media_type"`
 	MediaID           int32         `json:"media_id"`
@@ -153,10 +157,12 @@ type CreateSharedEntryParams struct {
 	ComparatorStatus  string        `json:"comparator_status"`
 	CreatorScore      pgtype.Float8 `json:"creator_score"`
 	ComparatorScore   pgtype.Float8 `json:"comparator_score"`
+	InCreatorList     bool          `json:"in_creator_list"`
+	InComparatorList  bool          `json:"in_comparator_list"`
 }
 
-func (q *Queries) CreateSharedEntry(ctx context.Context, arg CreateSharedEntryParams) (SharedEntry, error) {
-	row := q.db.QueryRow(ctx, createSharedEntry,
+func (q *Queries) CreateMediaEntry(ctx context.Context, arg CreateMediaEntryParams) (MediaEntry, error) {
+	row := q.db.QueryRow(ctx, createMediaEntry,
 		arg.ComparisonID,
 		arg.MediaType,
 		arg.MediaID,
@@ -168,8 +174,10 @@ func (q *Queries) CreateSharedEntry(ctx context.Context, arg CreateSharedEntryPa
 		arg.ComparatorStatus,
 		arg.CreatorScore,
 		arg.ComparatorScore,
+		arg.InCreatorList,
+		arg.InComparatorList,
 	)
-	var i SharedEntry
+	var i MediaEntry
 	err := row.Scan(
 		&i.ID,
 		&i.ComparisonID,
@@ -184,6 +192,8 @@ func (q *Queries) CreateSharedEntry(ctx context.Context, arg CreateSharedEntryPa
 		&i.CreatedAt,
 		&i.CreatorStatus,
 		&i.ComparatorStatus,
+		&i.InCreatorList,
+		&i.InComparatorList,
 	)
 	return i, err
 }
@@ -364,6 +374,137 @@ func (q *Queries) GetMediaCache(ctx context.Context, id int32) (MediaCache, erro
 	return i, err
 }
 
+const getMediaEntriesByComparison = `-- name: GetMediaEntriesByComparison :many
+SELECT id, comparison_id, media_type, media_id, media_title_romaji, media_title_english, media_cover_large, media_cover_medium, creator_score, comparator_score, created_at, creator_status, comparator_status, in_creator_list, in_comparator_list FROM media_entries
+WHERE comparison_id = $1
+ORDER BY media_title_romaji
+`
+
+func (q *Queries) GetMediaEntriesByComparison(ctx context.Context, comparisonID int32) ([]MediaEntry, error) {
+	rows, err := q.db.Query(ctx, getMediaEntriesByComparison, comparisonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MediaEntry{}
+	for rows.Next() {
+		var i MediaEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.ComparisonID,
+			&i.MediaType,
+			&i.MediaID,
+			&i.MediaTitleRomaji,
+			&i.MediaTitleEnglish,
+			&i.MediaCoverLarge,
+			&i.MediaCoverMedium,
+			&i.CreatorScore,
+			&i.ComparatorScore,
+			&i.CreatedAt,
+			&i.CreatorStatus,
+			&i.ComparatorStatus,
+			&i.InCreatorList,
+			&i.InComparatorList,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getMediaEntriesWithCache = `-- name: GetMediaEntriesWithCache :many
+SELECT
+    me.id, me.comparison_id, me.media_type, me.media_id, me.media_title_romaji, me.media_title_english, me.media_cover_large, me.media_cover_medium, me.creator_score, me.comparator_score, me.created_at, me.creator_status, me.comparator_status, me.in_creator_list, me.in_comparator_list,
+    mc.genres,
+    mc.average_score,
+    mc.mean_score,
+    mc.popularity,
+    mc.favourites,
+    COALESCE(
+        (SELECT array_agg(t.name ORDER BY mt.rank DESC)
+         FROM media_tags mt
+         JOIN tags t ON mt.tag_id = t.id
+         WHERE mt.media_id = me.media_id
+           AND mt.is_media_spoiler = false
+           AND mt.is_general_spoiler = false
+         LIMIT 10),
+        ARRAY[]::text[]
+    ) as tag_names,
+    COALESCE(
+        (SELECT array_agg(mt.rank ORDER BY mt.rank DESC)
+         FROM media_tags mt
+         JOIN tags t ON mt.tag_id = t.id
+         WHERE mt.media_id = me.media_id
+           AND mt.is_media_spoiler = false
+           AND mt.is_general_spoiler = false
+         LIMIT 10),
+        ARRAY[]::integer[]
+    ) as tag_ranks
+FROM media_entries me
+LEFT JOIN media_cache mc ON me.media_id = mc.id
+WHERE me.comparison_id = $1
+ORDER BY me.media_title_romaji
+`
+
+type GetMediaEntriesWithCacheRow struct {
+	MediaEntry   MediaEntry  `json:"media_entry"`
+	Genres       []string    `json:"genres"`
+	AverageScore pgtype.Int4 `json:"average_score"`
+	MeanScore    pgtype.Int4 `json:"mean_score"`
+	Popularity   pgtype.Int4 `json:"popularity"`
+	Favourites   pgtype.Int4 `json:"favourites"`
+	TagNames     interface{} `json:"tag_names"`
+	TagRanks     interface{} `json:"tag_ranks"`
+}
+
+// Get all media entries with media_cache data joined for recommendation scoring
+func (q *Queries) GetMediaEntriesWithCache(ctx context.Context, comparisonID int32) ([]GetMediaEntriesWithCacheRow, error) {
+	rows, err := q.db.Query(ctx, getMediaEntriesWithCache, comparisonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMediaEntriesWithCacheRow{}
+	for rows.Next() {
+		var i GetMediaEntriesWithCacheRow
+		if err := rows.Scan(
+			&i.MediaEntry.ID,
+			&i.MediaEntry.ComparisonID,
+			&i.MediaEntry.MediaType,
+			&i.MediaEntry.MediaID,
+			&i.MediaEntry.MediaTitleRomaji,
+			&i.MediaEntry.MediaTitleEnglish,
+			&i.MediaEntry.MediaCoverLarge,
+			&i.MediaEntry.MediaCoverMedium,
+			&i.MediaEntry.CreatorScore,
+			&i.MediaEntry.ComparatorScore,
+			&i.MediaEntry.CreatedAt,
+			&i.MediaEntry.CreatorStatus,
+			&i.MediaEntry.ComparatorStatus,
+			&i.MediaEntry.InCreatorList,
+			&i.MediaEntry.InComparatorList,
+			&i.Genres,
+			&i.AverageScore,
+			&i.MeanScore,
+			&i.Popularity,
+			&i.Favourites,
+			&i.TagNames,
+			&i.TagRanks,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMediaTags = `-- name: GetMediaTags :many
 SELECT t.id, t.name, mt.rank, mt.is_media_spoiler, mt.is_general_spoiler
 FROM media_tags mt
@@ -457,21 +598,66 @@ func (q *Queries) GetPendingQueueItems(ctx context.Context, limit int32) ([]Medi
 	return items, nil
 }
 
-const getSharedEntriesByComparison = `-- name: GetSharedEntriesByComparison :many
-SELECT id, comparison_id, media_type, media_id, media_title_romaji, media_title_english, media_cover_large, media_cover_medium, creator_score, comparator_score, created_at, creator_status, comparator_status FROM shared_entries
-WHERE comparison_id = $1
-ORDER BY creator_status, media_title_romaji
+const getRecommendationCandidates = `-- name: GetRecommendationCandidates :many
+SELECT
+    me.id, me.comparison_id, me.media_type, me.media_id, me.media_title_romaji, me.media_title_english, me.media_cover_large, me.media_cover_medium, me.creator_score, me.comparator_score, me.created_at, me.creator_status, me.comparator_status, me.in_creator_list, me.in_comparator_list,
+    mc.genres,
+    mc.average_score,
+    mc.mean_score,
+    mc.popularity,
+    mc.favourites,
+    mc.format,
+    mc.status as media_status,
+    mc.season_year,
+    mc.season,
+    mc.is_adult
+FROM media_entries me
+LEFT JOIN media_cache mc ON me.media_id = mc.id
+WHERE me.comparison_id = $1
+  AND me.in_comparator_list = true
+  AND me.in_creator_list = false
+  AND me.comparator_status NOT IN ('DROPPED', 'PAUSED')
+ORDER BY me.media_title_romaji
 `
 
-func (q *Queries) GetSharedEntriesByComparison(ctx context.Context, comparisonID int32) ([]SharedEntry, error) {
-	rows, err := q.db.Query(ctx, getSharedEntriesByComparison, comparisonID)
+type GetRecommendationCandidatesRow struct {
+	ID                int32            `json:"id"`
+	ComparisonID      int32            `json:"comparison_id"`
+	MediaType         string           `json:"media_type"`
+	MediaID           int32            `json:"media_id"`
+	MediaTitleRomaji  string           `json:"media_title_romaji"`
+	MediaTitleEnglish pgtype.Text      `json:"media_title_english"`
+	MediaCoverLarge   pgtype.Text      `json:"media_cover_large"`
+	MediaCoverMedium  pgtype.Text      `json:"media_cover_medium"`
+	CreatorScore      pgtype.Float8    `json:"creator_score"`
+	ComparatorScore   pgtype.Float8    `json:"comparator_score"`
+	CreatedAt         pgtype.Timestamp `json:"created_at"`
+	CreatorStatus     string           `json:"creator_status"`
+	ComparatorStatus  string           `json:"comparator_status"`
+	InCreatorList     bool             `json:"in_creator_list"`
+	InComparatorList  bool             `json:"in_comparator_list"`
+	Genres            []string         `json:"genres"`
+	AverageScore      pgtype.Int4      `json:"average_score"`
+	MeanScore         pgtype.Int4      `json:"mean_score"`
+	Popularity        pgtype.Int4      `json:"popularity"`
+	Favourites        pgtype.Int4      `json:"favourites"`
+	Format            pgtype.Text      `json:"format"`
+	MediaStatus       pgtype.Text      `json:"media_status"`
+	SeasonYear        pgtype.Int4      `json:"season_year"`
+	Season            pgtype.Text      `json:"season"`
+	IsAdult           pgtype.Bool      `json:"is_adult"`
+}
+
+// Get media from comparator's list that creator doesn't have, excluding dropped/on-hold by comparator
+func (q *Queries) GetRecommendationCandidates(ctx context.Context, comparisonID int32) ([]GetRecommendationCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, getRecommendationCandidates, comparisonID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []SharedEntry{}
+	items := []GetRecommendationCandidatesRow{}
 	for rows.Next() {
-		var i SharedEntry
+		var i GetRecommendationCandidatesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ComparisonID,
@@ -486,6 +672,62 @@ func (q *Queries) GetSharedEntriesByComparison(ctx context.Context, comparisonID
 			&i.CreatedAt,
 			&i.CreatorStatus,
 			&i.ComparatorStatus,
+			&i.InCreatorList,
+			&i.InComparatorList,
+			&i.Genres,
+			&i.AverageScore,
+			&i.MeanScore,
+			&i.Popularity,
+			&i.Favourites,
+			&i.Format,
+			&i.MediaStatus,
+			&i.SeasonYear,
+			&i.Season,
+			&i.IsAdult,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSharedEntriesByComparison = `-- name: GetSharedEntriesByComparison :many
+SELECT id, comparison_id, media_type, media_id, media_title_romaji, media_title_english, media_cover_large, media_cover_medium, creator_score, comparator_score, created_at, creator_status, comparator_status, in_creator_list, in_comparator_list FROM media_entries
+WHERE comparison_id = $1
+  AND in_creator_list = true
+  AND in_comparator_list = true
+ORDER BY creator_status, media_title_romaji
+`
+
+func (q *Queries) GetSharedEntriesByComparison(ctx context.Context, comparisonID int32) ([]MediaEntry, error) {
+	rows, err := q.db.Query(ctx, getSharedEntriesByComparison, comparisonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MediaEntry{}
+	for rows.Next() {
+		var i MediaEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.ComparisonID,
+			&i.MediaType,
+			&i.MediaID,
+			&i.MediaTitleRomaji,
+			&i.MediaTitleEnglish,
+			&i.MediaCoverLarge,
+			&i.MediaCoverMedium,
+			&i.CreatorScore,
+			&i.ComparatorScore,
+			&i.CreatedAt,
+			&i.CreatorStatus,
+			&i.ComparatorStatus,
+			&i.InCreatorList,
+			&i.InComparatorList,
 		); err != nil {
 			return nil, err
 		}

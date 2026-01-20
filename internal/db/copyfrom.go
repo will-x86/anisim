@@ -9,13 +9,13 @@ import (
 	"context"
 )
 
-// iteratorForBatchCreateSharedEntries implements pgx.CopyFromSource.
-type iteratorForBatchCreateSharedEntries struct {
-	rows                 []BatchCreateSharedEntriesParams
+// iteratorForBatchCreateMediaEntries implements pgx.CopyFromSource.
+type iteratorForBatchCreateMediaEntries struct {
+	rows                 []BatchCreateMediaEntriesParams
 	skippedFirstNextCall bool
 }
 
-func (r *iteratorForBatchCreateSharedEntries) Next() bool {
+func (r *iteratorForBatchCreateMediaEntries) Next() bool {
 	if len(r.rows) == 0 {
 		return false
 	}
@@ -27,7 +27,7 @@ func (r *iteratorForBatchCreateSharedEntries) Next() bool {
 	return len(r.rows) > 0
 }
 
-func (r iteratorForBatchCreateSharedEntries) Values() ([]interface{}, error) {
+func (r iteratorForBatchCreateMediaEntries) Values() ([]interface{}, error) {
 	return []interface{}{
 		r.rows[0].ComparisonID,
 		r.rows[0].MediaType,
@@ -40,15 +40,17 @@ func (r iteratorForBatchCreateSharedEntries) Values() ([]interface{}, error) {
 		r.rows[0].ComparatorStatus,
 		r.rows[0].CreatorScore,
 		r.rows[0].ComparatorScore,
+		r.rows[0].InCreatorList,
+		r.rows[0].InComparatorList,
 	}, nil
 }
 
-func (r iteratorForBatchCreateSharedEntries) Err() error {
+func (r iteratorForBatchCreateMediaEntries) Err() error {
 	return nil
 }
 
-func (q *Queries) BatchCreateSharedEntries(ctx context.Context, arg []BatchCreateSharedEntriesParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"shared_entries"}, []string{"comparison_id", "media_type", "media_id", "media_title_romaji", "media_title_english", "media_cover_large", "media_cover_medium", "creator_status", "comparator_status", "creator_score", "comparator_score"}, &iteratorForBatchCreateSharedEntries{rows: arg})
+func (q *Queries) BatchCreateMediaEntries(ctx context.Context, arg []BatchCreateMediaEntriesParams) (int64, error) {
+	return q.db.CopyFrom(ctx, []string{"media_entries"}, []string{"comparison_id", "media_type", "media_id", "media_title_romaji", "media_title_english", "media_cover_large", "media_cover_medium", "creator_status", "comparator_status", "creator_score", "comparator_score", "in_creator_list", "in_comparator_list"}, &iteratorForBatchCreateMediaEntries{rows: arg})
 }
 
 // iteratorForBatchEnqueueMediaForCaching implements pgx.CopyFromSource.

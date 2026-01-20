@@ -74,7 +74,7 @@ func (s *Server) setupRoutes() {
 
 	s.router.Get("/", uiHandler.HandleIndex)
 	s.router.Get("/comparisons/{id}", uiHandler.HandleComparisonDetail)
-	s.router.Get("/recommendation/{id}", uiHandler.HandleRecommendation) // Pass in comparison ID
+	s.router.Get("/comparisons/{id}/recommendations", uiHandler.HandleRecommendation)
 	s.router.Post("/comparisons", uiHandler.HandleCreateAniSimComparison)
 }
 

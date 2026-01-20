@@ -38,8 +38,8 @@ INSERT INTO comparisons (
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 RETURNING *;
 
--- name: CreateSharedEntry :one
-INSERT INTO shared_entries (
+-- name: CreateMediaEntry :one
+INSERT INTO media_entries (
     comparison_id,
     media_type,
     media_id,
@@ -50,13 +50,15 @@ INSERT INTO shared_entries (
     creator_status,
     comparator_status,
     creator_score,
-    comparator_score
+    comparator_score,
+    in_creator_list,
+    in_comparator_list
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING *;
 
--- name: BatchCreateSharedEntries :copyfrom
-INSERT INTO shared_entries (
+-- name: BatchCreateMediaEntries :copyfrom
+INSERT INTO media_entries (
     comparison_id,
     media_type,
     media_id,
@@ -67,14 +69,79 @@ INSERT INTO shared_entries (
     creator_status,
     comparator_status,
     creator_score,
-    comparator_score
+    comparator_score,
+    in_creator_list,
+    in_comparator_list
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
 
 -- name: GetSharedEntriesByComparison :many
-SELECT * FROM shared_entries
+SELECT * FROM media_entries
 WHERE comparison_id = $1
+  AND in_creator_list = true
+  AND in_comparator_list = true
 ORDER BY creator_status, media_title_romaji;
+
+-- name: GetMediaEntriesByComparison :many
+SELECT * FROM media_entries
+WHERE comparison_id = $1
+ORDER BY media_title_romaji;
+
+-- name: GetMediaEntriesWithCache :many
+-- Get all media entries with media_cache data joined for recommendation scoring
+SELECT
+    sqlc.embed(me),
+    mc.genres,
+    mc.average_score,
+    mc.mean_score,
+    mc.popularity,
+    mc.favourites,
+    COALESCE(
+        (SELECT array_agg(t.name ORDER BY mt.rank DESC)
+         FROM media_tags mt
+         JOIN tags t ON mt.tag_id = t.id
+         WHERE mt.media_id = me.media_id
+           AND mt.is_media_spoiler = false
+           AND mt.is_general_spoiler = false
+         LIMIT 10),
+        ARRAY[]::text[]
+    ) as tag_names,
+    COALESCE(
+        (SELECT array_agg(mt.rank ORDER BY mt.rank DESC)
+         FROM media_tags mt
+         JOIN tags t ON mt.tag_id = t.id
+         WHERE mt.media_id = me.media_id
+           AND mt.is_media_spoiler = false
+           AND mt.is_general_spoiler = false
+         LIMIT 10),
+        ARRAY[]::integer[]
+    ) as tag_ranks
+FROM media_entries me
+LEFT JOIN media_cache mc ON me.media_id = mc.id
+WHERE me.comparison_id = $1
+ORDER BY me.media_title_romaji;
+
+-- name: GetRecommendationCandidates :many
+-- Get media from comparator's list that creator doesn't have, excluding dropped/on-hold by comparator
+SELECT
+    me.*,
+    mc.genres,
+    mc.average_score,
+    mc.mean_score,
+    mc.popularity,
+    mc.favourites,
+    mc.format,
+    mc.status as media_status,
+    mc.season_year,
+    mc.season,
+    mc.is_adult
+FROM media_entries me
+LEFT JOIN media_cache mc ON me.media_id = mc.id
+WHERE me.comparison_id = $1
+  AND me.in_comparator_list = true
+  AND me.in_creator_list = false
+  AND me.comparator_status NOT IN ('DROPPED', 'PAUSED')
+ORDER BY me.media_title_romaji;
 
 -- name: UpsertMediaCache :one
 INSERT INTO media_cache (

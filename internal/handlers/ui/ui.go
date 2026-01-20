@@ -59,14 +59,47 @@ func (h *Handler) HandleRecommendation(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Comparison not found", http.StatusNotFound)
 		return
 	}
-	sharedEntries, err := h.queries.GetSharedEntriesByComparison(ctx, int32(id))
+	mediaEntries, err := h.queries.GetMediaEntriesWithCache(ctx, int32(id))
 	if err != nil {
-		log.Printf("Error fetching shared entries: %v", err)
+		log.Printf("Error fetching media entries with cache: %v", err)
 		http.Error(w, "Failed to load comparison data", http.StatusInternalServerError)
 		return
 	}
-	recommendation.GetRecommendation(dbComparison, sharedEntries)
+	recommendations := recommendation.GetRecommendation(dbComparison, mediaEntries)
+	log.Printf("Generated %d recommendations for creator", len(recommendations))
+	if len(recommendations) > 50 {
+		recommendations = recommendations[:50]
+	}
 
+	creatorUser := types.User{
+		ID:   int(dbComparison.CreatorID.Int32),
+		Name: dbComparison.CreatorName.String,
+		Avatar: types.Avatar{
+			Large:  dbComparison.CreatorAvatarLarge.String,
+			Medium: dbComparison.CreatorAvatarMedium.String,
+		},
+	}
+
+	comparatorUser := types.User{
+		ID:   int(dbComparison.ComparatorID.Int32),
+		Name: dbComparison.ComparatorName.String,
+		Avatar: types.Avatar{
+			Large:  dbComparison.ComparatorAvatarLarge.String,
+			Medium: dbComparison.ComparatorAvatarMedium.String,
+		},
+	}
+
+	comparison := types.Comparison{
+		ID:                 int(dbComparison.ID),
+		CreatorUsername:    dbComparison.CreatorUsername,
+		ComparatorUsername: dbComparison.ComparatorUsername,
+		Creator:            creatorUser,
+		Comparator:         comparatorUser,
+		Created:            dbComparison.ComparisonDate.Time,
+	}
+
+	component := pages.Recommendations(comparison, recommendations)
+	templ.Handler(component).ServeHTTP(w, r)
 }
 func (h *Handler) HandleComparisonDetail(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
@@ -216,13 +249,6 @@ func (h *Handler) HandleCreateAniSimComparison(w http.ResponseWriter, r *http.Re
 	go enqueueMediaList(ctx, h.queries, comparatorAnimeList, "ANIME")
 	go enqueueMediaList(ctx, h.queries, comparatorMangaList, "MANGA")
 
-	result := analyzer.AnalyzeComparisons(analyzer.AnalyzeComparisonsOptions{
-		CreatorAnimeList:    creatorAnimeList,
-		CreatorMangaList:    creatorMangaList,
-		ComparatorAnimeList: comparatorAnimeList,
-		ComparatorMangaList: comparatorMangaList,
-	})
-
 	comparison, err := h.queries.CreateComparison(ctx, db.CreateComparisonParams{
 		CreatorUsername:    creatorUsername,
 		ComparatorUsername: comparatorUsername,
@@ -251,53 +277,147 @@ func (h *Handler) HandleCreateAniSimComparison(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Batch insert shared entries
-	allEntries := make([]db.BatchCreateSharedEntriesParams, 0, len(result.AllSharedAnime)+len(result.AllSharedManga))
-
-	// Collect anime entries
-	for _, entry := range result.AllSharedAnime {
-		allEntries = append(allEntries, db.BatchCreateSharedEntriesParams{
-			ComparisonID:      comparison.ID,
-			MediaType:         "anime",
-			MediaID:           int32(entry.MediaID),
-			MediaTitleRomaji:  entry.Media.Title.Romaji,
-			MediaTitleEnglish: pgtype.Text{String: entry.Media.Title.English, Valid: entry.Media.Title.English != ""},
-			MediaCoverLarge:   pgtype.Text{String: entry.Media.CoverImage.Large, Valid: true},
-			MediaCoverMedium:  pgtype.Text{String: entry.Media.CoverImage.Medium, Valid: true},
-			CreatorStatus:     entry.CreatorStatus,
-			ComparatorStatus:  entry.ComparatorStatus,
-			CreatorScore:      pgtype.Float8{Float64: entry.CreatorScore, Valid: entry.CreatorScore > 0},
-			ComparatorScore:   pgtype.Float8{Float64: entry.ComparatorScore, Valid: entry.ComparatorScore > 0},
-		})
-	}
-
-	// Collect manga entries
-	for _, entry := range result.AllSharedManga {
-		allEntries = append(allEntries, db.BatchCreateSharedEntriesParams{
-			ComparisonID:      comparison.ID,
-			MediaType:         "manga",
-			MediaID:           int32(entry.MediaID),
-			MediaTitleRomaji:  entry.Media.Title.Romaji,
-			MediaTitleEnglish: pgtype.Text{String: entry.Media.Title.English, Valid: entry.Media.Title.English != ""},
-			MediaCoverLarge:   pgtype.Text{String: entry.Media.CoverImage.Large, Valid: true},
-			MediaCoverMedium:  pgtype.Text{String: entry.Media.CoverImage.Medium, Valid: true},
-			CreatorStatus:     entry.CreatorStatus,
-			ComparatorStatus:  entry.ComparatorStatus,
-			CreatorScore:      pgtype.Float8{Float64: entry.CreatorScore, Valid: entry.CreatorScore > 0},
-			ComparatorScore:   pgtype.Float8{Float64: entry.ComparatorScore, Valid: entry.ComparatorScore > 0},
-		})
-	}
+	// Store ALL media from both users (shared + unique to each user)
+	allEntries := buildAllMediaEntries(
+		comparison.ID,
+		creatorAnimeList,
+		creatorMangaList,
+		comparatorAnimeList,
+		comparatorMangaList,
+	)
 
 	if len(allEntries) > 0 {
-		count, err := h.queries.BatchCreateSharedEntries(ctx, allEntries)
+		count, err := h.queries.BatchCreateMediaEntries(ctx, allEntries)
 		if err != nil {
-			log.Printf("Error batch creating shared entries: %v", err)
+			log.Printf("Error batch creating media entries: %v", err)
 		} else {
-			log.Printf("Created %d shared entries", count)
+			log.Printf("Created %d media entries", count)
 		}
 	}
 
 	http.Redirect(w, r, fmt.Sprintf("/comparisons/%d", comparison.ID), http.StatusSeeOther)
+}
+
+// buildAllMediaEntries creates media entries for ALL media from both users
+func buildAllMediaEntries(
+	comparisonID int32,
+	creatorAnimeList types.MediaListCollection,
+	creatorMangaList types.MediaListCollection,
+	comparatorAnimeList types.MediaListCollection,
+	comparatorMangaList types.MediaListCollection,
+) []db.BatchCreateMediaEntriesParams {
+	// Map media_id -> entry data
+	mediaMap := make(map[int32]*mediaEntryData)
+
+	// Process creator's anime
+	for _, list := range creatorAnimeList.Lists {
+		for _, entry := range list.Entries {
+			id := int32(entry.MediaId)
+			if _, exists := mediaMap[id]; !exists {
+				mediaMap[id] = &mediaEntryData{
+					MediaID:          id,
+					MediaType:        "anime",
+					Media:            entry.Media,
+					InCreatorList:    false,
+					InComparatorList: false,
+				}
+			}
+			mediaMap[id].InCreatorList = true
+			mediaMap[id].CreatorStatus = entry.Status
+			mediaMap[id].CreatorScore = entry.Score
+		}
+	}
+
+	// Process creator's manga
+	for _, list := range creatorMangaList.Lists {
+		for _, entry := range list.Entries {
+			id := int32(entry.MediaId)
+			if _, exists := mediaMap[id]; !exists {
+				mediaMap[id] = &mediaEntryData{
+					MediaID:          id,
+					MediaType:        "manga",
+					Media:            entry.Media,
+					InCreatorList:    false,
+					InComparatorList: false,
+				}
+			}
+			mediaMap[id].InCreatorList = true
+			mediaMap[id].CreatorStatus = entry.Status
+			mediaMap[id].CreatorScore = entry.Score
+		}
+	}
+
+	// Process comparator's anime
+	for _, list := range comparatorAnimeList.Lists {
+		for _, entry := range list.Entries {
+			id := int32(entry.MediaId)
+			if _, exists := mediaMap[id]; !exists {
+				mediaMap[id] = &mediaEntryData{
+					MediaID:          id,
+					MediaType:        "anime",
+					Media:            entry.Media,
+					InCreatorList:    false,
+					InComparatorList: false,
+				}
+			}
+			mediaMap[id].InComparatorList = true
+			mediaMap[id].ComparatorStatus = entry.Status
+			mediaMap[id].ComparatorScore = entry.Score
+		}
+	}
+
+	// Process comparator's manga
+	for _, list := range comparatorMangaList.Lists {
+		for _, entry := range list.Entries {
+			id := int32(entry.MediaId)
+			if _, exists := mediaMap[id]; !exists {
+				mediaMap[id] = &mediaEntryData{
+					MediaID:          id,
+					MediaType:        "manga",
+					Media:            entry.Media,
+					InCreatorList:    false,
+					InComparatorList: false,
+				}
+			}
+			mediaMap[id].InComparatorList = true
+			mediaMap[id].ComparatorStatus = entry.Status
+			mediaMap[id].ComparatorScore = entry.Score
+		}
+	}
+
+	// Convert to batch params
+	allEntries := make([]db.BatchCreateMediaEntriesParams, 0, len(mediaMap))
+	for _, data := range mediaMap {
+		allEntries = append(allEntries, db.BatchCreateMediaEntriesParams{
+			ComparisonID:      comparisonID,
+			MediaType:         data.MediaType,
+			MediaID:           data.MediaID,
+			MediaTitleRomaji:  data.Media.Title.Romaji,
+			MediaTitleEnglish: pgtype.Text{String: data.Media.Title.English, Valid: data.Media.Title.English != ""},
+			MediaCoverLarge:   pgtype.Text{String: data.Media.CoverImage.Large, Valid: true},
+			MediaCoverMedium:  pgtype.Text{String: data.Media.CoverImage.Medium, Valid: true},
+			CreatorStatus:     data.CreatorStatus,
+			ComparatorStatus:  data.ComparatorStatus,
+			CreatorScore:      pgtype.Float8{Float64: data.CreatorScore, Valid: data.CreatorScore > 0},
+			ComparatorScore:   pgtype.Float8{Float64: data.ComparatorScore, Valid: data.ComparatorScore > 0},
+			InCreatorList:     data.InCreatorList,
+			InComparatorList:  data.InComparatorList,
+		})
+	}
+
+	return allEntries
+}
+
+type mediaEntryData struct {
+	MediaID          int32
+	MediaType        string
+	Media            types.Media
+	InCreatorList    bool
+	InComparatorList bool
+	CreatorStatus    string
+	CreatorScore     float64
+	ComparatorStatus string
+	ComparatorScore  float64
 }
 
 func enqueueMediaList(ctx context.Context, queries *db.Queries, collection types.MediaListCollection, mediaType string) {
