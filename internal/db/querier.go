@@ -9,14 +9,23 @@ import (
 )
 
 type Querier interface {
+	BatchCreateSharedEntries(ctx context.Context, arg []BatchCreateSharedEntriesParams) (int64, error)
+	BatchEnqueueMediaForCaching(ctx context.Context, arg []BatchEnqueueMediaForCachingParams) (int64, error)
 	CreateComparison(ctx context.Context, arg CreateComparisonParams) (Comparison, error)
 	CreateSharedEntry(ctx context.Context, arg CreateSharedEntryParams) (SharedEntry, error)
+	EnqueueMediaForCaching(ctx context.Context, arg EnqueueMediaForCachingParams) error
 	GetAllComparisons(ctx context.Context) ([]Comparison, error)
+	GetAllComparisonsOnePerCombo(ctx context.Context) ([]Comparison, error)
 	GetComparison(ctx context.Context, id int32) (Comparison, error)
 	GetMediaCache(ctx context.Context, id int32) (MediaCache, error)
 	GetMediaTags(ctx context.Context, mediaID int32) ([]GetMediaTagsRow, error)
 	GetOrCreateTag(ctx context.Context, name string) (Tag, error)
+	GetPendingQueueItems(ctx context.Context, limit int32) ([]MediaCacheQueue, error)
 	GetSharedEntriesByComparison(ctx context.Context, comparisonID int32) ([]SharedEntry, error)
+	MarkQueueItemCompleted(ctx context.Context, id int32) error
+	MarkQueueItemFailed(ctx context.Context, arg MarkQueueItemFailedParams) error
+	MarkQueueItemProcessing(ctx context.Context, id int32) error
+	NeedsCacheUpdate(ctx context.Context, id int32) (bool, error)
 	UpsertMediaCache(ctx context.Context, arg UpsertMediaCacheParams) (MediaCache, error)
 	UpsertMediaTag(ctx context.Context, arg UpsertMediaTagParams) error
 }

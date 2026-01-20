@@ -2,6 +2,14 @@
 SELECT * FROM comparisons
 ORDER BY comparison_date DESC;
 
+-- name: GetAllComparisonsOnePerCombo :many
+SELECT * FROM (
+    SELECT DISTINCT ON (creator_username, comparator_username) *
+    FROM comparisons
+    ORDER BY creator_username, comparator_username, comparison_date DESC
+) sub
+ORDER BY comparison_date DESC;
+
 -- name: GetComparison :one
 SELECT * FROM comparisons
 WHERE id = $1;
@@ -46,6 +54,22 @@ INSERT INTO shared_entries (
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING *;
+
+-- name: BatchCreateSharedEntries :copyfrom
+INSERT INTO shared_entries (
+    comparison_id,
+    media_type,
+    media_id,
+    media_title_romaji,
+    media_title_english,
+    media_cover_large,
+    media_cover_medium,
+    creator_status,
+    comparator_status,
+    creator_score,
+    comparator_score
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
 
 -- name: GetSharedEntriesByComparison :many
 SELECT * FROM shared_entries
@@ -102,3 +126,46 @@ FROM media_tags mt
 JOIN tags t ON mt.tag_id = t.id
 WHERE mt.media_id = $1
 ORDER BY mt.rank DESC;
+
+-- name: EnqueueMediaForCaching :exec
+INSERT INTO media_cache_queue (media_id, media_type)
+VALUES ($1, $2)
+ON CONFLICT (media_id) WHERE status IN ('pending', 'processing') DO NOTHING;
+
+-- name: BatchEnqueueMediaForCaching :copyfrom
+INSERT INTO media_cache_queue (media_id, media_type)
+VALUES ($1, $2);
+
+-- name: GetPendingQueueItems :many
+SELECT * FROM media_cache_queue
+WHERE status = 'pending'
+  AND (retry_after IS NULL OR retry_after <= NOW())
+ORDER BY created_at ASC
+LIMIT $1;
+
+-- name: MarkQueueItemProcessing :exec
+UPDATE media_cache_queue
+SET status = 'processing', updated_at = NOW()
+WHERE id = $1;
+
+-- name: MarkQueueItemCompleted :exec
+UPDATE media_cache_queue
+SET status = 'completed', updated_at = NOW()
+WHERE id = $1;
+
+-- name: MarkQueueItemFailed :exec
+UPDATE media_cache_queue
+SET status = 'failed',
+    attempts = attempts + 1,
+    retry_after = $2,
+    updated_at = NOW()
+WHERE id = $1;
+
+-- name: NeedsCacheUpdate :one
+SELECT
+    CASE
+        WHEN updated_at < NOW() - INTERVAL '24 hours' THEN true
+        ELSE false
+    END as needs_update
+FROM media_cache
+WHERE id = $1;

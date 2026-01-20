@@ -7,7 +7,9 @@ import (
 	"os"
 
 	"github.com/will-x86/anisim/internal/anilist"
+	"github.com/will-x86/anisim/internal/db"
 	"github.com/will-x86/anisim/internal/handlers/ui"
+	"github.com/will-x86/anisim/internal/worker"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -15,9 +17,10 @@ import (
 )
 
 type Server struct {
-	router *chi.Mux
-	server *http.Server
-	dbPool *pgxpool.Pool
+	router      *chi.Mux
+	server      *http.Server
+	dbPool      *pgxpool.Pool
+	cacheWorker *worker.CacheWorker
 }
 
 func New() *Server {
@@ -38,13 +41,21 @@ func New() *Server {
 
 	log.Println("Database connection established")
 
+	// Initialize cache worker
+	queries := db.New(dbPool)
+	cacheWorker := worker.NewCacheWorker(queries)
+
 	s := &Server{
-		router: chi.NewRouter(),
-		dbPool: dbPool,
+		router:      chi.NewRouter(),
+		dbPool:      dbPool,
+		cacheWorker: cacheWorker,
 	}
 
 	s.setupMiddleware()
 	s.setupRoutes()
+
+	// Start cache worker in background
+	go cacheWorker.Start()
 
 	return s
 }
@@ -75,6 +86,7 @@ func (s *Server) Start(addr string) error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.cacheWorker.Stop()
 	s.dbPool.Close()
 	return s.server.Shutdown(ctx)
 }

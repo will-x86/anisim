@@ -52,6 +52,17 @@ type MediaCache struct {
 	CreatedAt        pgtype.Timestamp `json:"created_at"`
 }
 
+type MediaCacheQueue struct {
+	ID         int32            `json:"id"`
+	MediaID    int32            `json:"media_id"`
+	MediaType  string           `json:"media_type"`
+	Status     string           `json:"status"`
+	RetryAfter pgtype.Timestamp `json:"retry_after"`
+	Attempts   pgtype.Int4      `json:"attempts"`
+	CreatedAt  pgtype.Timestamp `json:"created_at"`
+	UpdatedAt  pgtype.Timestamp `json:"updated_at"`
+}
+
 type MediaTag struct {
 	MediaID          int32       `json:"media_id"`
 	TagID            int32       `json:"tag_id"`

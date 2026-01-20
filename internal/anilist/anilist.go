@@ -193,6 +193,64 @@ func GetBasicUserInfo(username string) (types.User, error) {
 	return respData.User, nil
 }
 
+// GetMediaBatch fetches media metadata for multiple IDs using Page query
+func GetMediaBatch(ids []int, mediaType string) ([]types.Media, error) {
+	if len(ids) == 0 {
+		return []types.Media{}, nil
+	}
+
+	query := `
+	query ($ids: [Int], $type: MediaType) {
+		Page {
+			media(id_in: $ids, type: $type) {
+				id
+				type
+				title {
+					romaji
+					english
+				}
+				coverImage {
+					large
+					medium
+				}
+				genres
+				tags {
+					name
+					rank
+					isMediaSpoiler
+					isGeneralSpoiler
+				}
+				averageScore
+				meanScore
+				popularity
+				favourites
+				format
+				status
+				seasonYear
+				season
+				isAdult
+			}
+		}
+	}`
+
+	ctx := context.Background()
+	req := graphql.NewRequest(query)
+	req.Var("ids", ids)
+	req.Var("type", mediaType)
+
+	var resp struct {
+		Page struct {
+			Media []types.Media `json:"media"`
+		} `json:"Page"`
+	}
+
+	if err := runWithRateLimit(ctx, req, &resp); err != nil {
+		return nil, err
+	}
+
+	return resp.Page.Media, nil
+}
+
 func GetComparisonData(creatorUsername, comparatorUsername string) (
 	creatorUser types.User,
 	creatorAnime types.MediaListCollection,

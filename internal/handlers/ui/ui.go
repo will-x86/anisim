@@ -10,7 +10,6 @@ import (
 
 	"github.com/will-x86/anisim/internal/analyzer"
 	"github.com/will-x86/anisim/internal/anilist"
-	"github.com/will-x86/anisim/internal/cache"
 	"github.com/will-x86/anisim/internal/db"
 	"github.com/will-x86/anisim/internal/types"
 	"github.com/will-x86/anisim/templates/pages"
@@ -33,7 +32,8 @@ func NewHandler(dbPool *pgxpool.Pool) *Handler {
 
 func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
-	comparisons, err := h.queries.GetAllComparisons(ctx)
+
+	comparisons, err := h.queries.GetAllComparisonsOnePerCombo(ctx)
 	if err != nil {
 		log.Printf("Error fetching comparisons: %v", err)
 		http.Error(w, "Failed to load comparisons", http.StatusInternalServerError)
@@ -148,6 +148,12 @@ func (h *Handler) HandleComparisonDetail(w http.ResponseWriter, r *http.Request)
 	templ.Handler(component).ServeHTTP(w, r)
 }
 
+// Get info from user, usernames etc
+// Grab lists & user info from anilist api
+// Enqueue all media into caching queue
+// Get same media from AnalyzeComparisons
+// Store comparison in DB
+// Batch insert shared entries
 func (h *Handler) HandleCreateAniSimComparison(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
@@ -181,11 +187,10 @@ func (h *Handler) HandleCreateAniSimComparison(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Cache media metadata in the background
-	cache.CacheMediaListInBackground(ctx, h.queries, creatorAnimeList)
-	cache.CacheMediaListInBackground(ctx, h.queries, creatorMangaList)
-	cache.CacheMediaListInBackground(ctx, h.queries, comparatorAnimeList)
-	cache.CacheMediaListInBackground(ctx, h.queries, comparatorMangaList)
+	go enqueueMediaList(ctx, h.queries, creatorAnimeList, "ANIME")
+	go enqueueMediaList(ctx, h.queries, creatorMangaList, "MANGA")
+	go enqueueMediaList(ctx, h.queries, comparatorAnimeList, "ANIME")
+	go enqueueMediaList(ctx, h.queries, comparatorMangaList, "MANGA")
 
 	result := analyzer.AnalyzeComparisons(analyzer.AnalyzeComparisonsOptions{
 		CreatorAnimeList:    creatorAnimeList,
@@ -222,9 +227,12 @@ func (h *Handler) HandleCreateAniSimComparison(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Store shared anime entries
+	// Batch insert shared entries
+	allEntries := make([]db.BatchCreateSharedEntriesParams, 0, len(result.AllSharedAnime)+len(result.AllSharedManga))
+
+	// Collect anime entries
 	for _, entry := range result.AllSharedAnime {
-		_, err := h.queries.CreateSharedEntry(ctx, db.CreateSharedEntryParams{
+		allEntries = append(allEntries, db.BatchCreateSharedEntriesParams{
 			ComparisonID:      comparison.ID,
 			MediaType:         "anime",
 			MediaID:           int32(entry.MediaID),
@@ -237,14 +245,11 @@ func (h *Handler) HandleCreateAniSimComparison(w http.ResponseWriter, r *http.Re
 			CreatorScore:      pgtype.Float8{Float64: entry.CreatorScore, Valid: entry.CreatorScore > 0},
 			ComparatorScore:   pgtype.Float8{Float64: entry.ComparatorScore, Valid: entry.ComparatorScore > 0},
 		})
-		if err != nil {
-			log.Printf("Error creating shared anime entry: %v", err)
-		}
 	}
 
-	// Store shared manga entries
+	// Collect manga entries
 	for _, entry := range result.AllSharedManga {
-		_, err := h.queries.CreateSharedEntry(ctx, db.CreateSharedEntryParams{
+		allEntries = append(allEntries, db.BatchCreateSharedEntriesParams{
 			ComparisonID:      comparison.ID,
 			MediaType:         "manga",
 			MediaID:           int32(entry.MediaID),
@@ -257,10 +262,44 @@ func (h *Handler) HandleCreateAniSimComparison(w http.ResponseWriter, r *http.Re
 			CreatorScore:      pgtype.Float8{Float64: entry.CreatorScore, Valid: entry.CreatorScore > 0},
 			ComparatorScore:   pgtype.Float8{Float64: entry.ComparatorScore, Valid: entry.ComparatorScore > 0},
 		})
+	}
+
+	if len(allEntries) > 0 {
+		count, err := h.queries.BatchCreateSharedEntries(ctx, allEntries)
 		if err != nil {
-			log.Printf("Error creating shared manga entry: %v", err)
+			log.Printf("Error batch creating shared entries: %v", err)
+		} else {
+			log.Printf("Created %d shared entries", count)
 		}
 	}
 
 	http.Redirect(w, r, fmt.Sprintf("/comparisons/%d", comparison.ID), http.StatusSeeOther)
+}
+
+func enqueueMediaList(ctx context.Context, queries *db.Queries, collection types.MediaListCollection, mediaType string) {
+	// Collect all unique media IDs
+	mediaIDs := make(map[int32]bool)
+	for _, list := range collection.Lists {
+		for _, entry := range list.Entries {
+			mediaIDs[int32(entry.MediaId)] = true
+		}
+	}
+
+	batchParams := make([]db.BatchEnqueueMediaForCachingParams, 0, len(mediaIDs))
+	for mediaID := range mediaIDs {
+		batchParams = append(batchParams, db.BatchEnqueueMediaForCachingParams{
+			MediaID:   mediaID,
+			MediaType: mediaType,
+		})
+	}
+
+	if len(batchParams) > 0 {
+		_, err := queries.BatchEnqueueMediaForCaching(ctx, batchParams)
+		if err != nil {
+			// Duplicate key errors are expected and fine - media already queued
+			log.Printf("Enqueued %d %s media items (some may have been duplicates)", len(batchParams), mediaType)
+		} else {
+			log.Printf("Enqueued %d %s media items", len(batchParams), mediaType)
+		}
+	}
 }

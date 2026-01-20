@@ -11,6 +11,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type BatchCreateSharedEntriesParams struct {
+	ComparisonID      int32         `json:"comparison_id"`
+	MediaType         string        `json:"media_type"`
+	MediaID           int32         `json:"media_id"`
+	MediaTitleRomaji  string        `json:"media_title_romaji"`
+	MediaTitleEnglish pgtype.Text   `json:"media_title_english"`
+	MediaCoverLarge   pgtype.Text   `json:"media_cover_large"`
+	MediaCoverMedium  pgtype.Text   `json:"media_cover_medium"`
+	CreatorStatus     string        `json:"creator_status"`
+	ComparatorStatus  string        `json:"comparator_status"`
+	CreatorScore      pgtype.Float8 `json:"creator_score"`
+	ComparatorScore   pgtype.Float8 `json:"comparator_score"`
+}
+
+type BatchEnqueueMediaForCachingParams struct {
+	MediaID   int32  `json:"media_id"`
+	MediaType string `json:"media_type"`
+}
+
 const createComparison = `-- name: CreateComparison :one
 INSERT INTO comparisons (
     creator_username,
@@ -169,6 +188,22 @@ func (q *Queries) CreateSharedEntry(ctx context.Context, arg CreateSharedEntryPa
 	return i, err
 }
 
+const enqueueMediaForCaching = `-- name: EnqueueMediaForCaching :exec
+INSERT INTO media_cache_queue (media_id, media_type)
+VALUES ($1, $2)
+ON CONFLICT (media_id) WHERE status IN ('pending', 'processing') DO NOTHING
+`
+
+type EnqueueMediaForCachingParams struct {
+	MediaID   int32  `json:"media_id"`
+	MediaType string `json:"media_type"`
+}
+
+func (q *Queries) EnqueueMediaForCaching(ctx context.Context, arg EnqueueMediaForCachingParams) error {
+	_, err := q.db.Exec(ctx, enqueueMediaForCaching, arg.MediaID, arg.MediaType)
+	return err
+}
+
 const getAllComparisons = `-- name: GetAllComparisons :many
 SELECT id, creator_username, comparator_username, comparison_date, creator_id, creator_name, creator_avatar_large, creator_avatar_medium, creator_episodes_watched, creator_minutes_watched, creator_chapters_read, creator_mean_score, comparator_id, comparator_name, comparator_avatar_large, comparator_avatar_medium, comparator_episodes_watched, comparator_minutes_watched, comparator_chapters_read, comparator_mean_score FROM comparisons
 ORDER BY comparison_date DESC
@@ -176,6 +211,56 @@ ORDER BY comparison_date DESC
 
 func (q *Queries) GetAllComparisons(ctx context.Context) ([]Comparison, error) {
 	rows, err := q.db.Query(ctx, getAllComparisons)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Comparison{}
+	for rows.Next() {
+		var i Comparison
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatorUsername,
+			&i.ComparatorUsername,
+			&i.ComparisonDate,
+			&i.CreatorID,
+			&i.CreatorName,
+			&i.CreatorAvatarLarge,
+			&i.CreatorAvatarMedium,
+			&i.CreatorEpisodesWatched,
+			&i.CreatorMinutesWatched,
+			&i.CreatorChaptersRead,
+			&i.CreatorMeanScore,
+			&i.ComparatorID,
+			&i.ComparatorName,
+			&i.ComparatorAvatarLarge,
+			&i.ComparatorAvatarMedium,
+			&i.ComparatorEpisodesWatched,
+			&i.ComparatorMinutesWatched,
+			&i.ComparatorChaptersRead,
+			&i.ComparatorMeanScore,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAllComparisonsOnePerCombo = `-- name: GetAllComparisonsOnePerCombo :many
+SELECT id, creator_username, comparator_username, comparison_date, creator_id, creator_name, creator_avatar_large, creator_avatar_medium, creator_episodes_watched, creator_minutes_watched, creator_chapters_read, creator_mean_score, comparator_id, comparator_name, comparator_avatar_large, comparator_avatar_medium, comparator_episodes_watched, comparator_minutes_watched, comparator_chapters_read, comparator_mean_score FROM (
+    SELECT DISTINCT ON (creator_username, comparator_username) id, creator_username, comparator_username, comparison_date, creator_id, creator_name, creator_avatar_large, creator_avatar_medium, creator_episodes_watched, creator_minutes_watched, creator_chapters_read, creator_mean_score, comparator_id, comparator_name, comparator_avatar_large, comparator_avatar_medium, comparator_episodes_watched, comparator_minutes_watched, comparator_chapters_read, comparator_mean_score
+    FROM comparisons
+    ORDER BY creator_username, comparator_username, comparison_date DESC
+) sub
+ORDER BY comparison_date DESC
+`
+
+func (q *Queries) GetAllComparisonsOnePerCombo(ctx context.Context) ([]Comparison, error) {
+	rows, err := q.db.Query(ctx, getAllComparisonsOnePerCombo)
 	if err != nil {
 		return nil, err
 	}
@@ -335,6 +420,43 @@ func (q *Queries) GetOrCreateTag(ctx context.Context, name string) (Tag, error) 
 	return i, err
 }
 
+const getPendingQueueItems = `-- name: GetPendingQueueItems :many
+SELECT id, media_id, media_type, status, retry_after, attempts, created_at, updated_at FROM media_cache_queue
+WHERE status = 'pending'
+  AND (retry_after IS NULL OR retry_after <= NOW())
+ORDER BY created_at ASC
+LIMIT $1
+`
+
+func (q *Queries) GetPendingQueueItems(ctx context.Context, limit int32) ([]MediaCacheQueue, error) {
+	rows, err := q.db.Query(ctx, getPendingQueueItems, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MediaCacheQueue{}
+	for rows.Next() {
+		var i MediaCacheQueue
+		if err := rows.Scan(
+			&i.ID,
+			&i.MediaID,
+			&i.MediaType,
+			&i.Status,
+			&i.RetryAfter,
+			&i.Attempts,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSharedEntriesByComparison = `-- name: GetSharedEntriesByComparison :many
 SELECT id, comparison_id, media_type, media_id, media_title_romaji, media_title_english, media_cover_large, media_cover_medium, creator_score, comparator_score, created_at, creator_status, comparator_status FROM shared_entries
 WHERE comparison_id = $1
@@ -373,6 +495,64 @@ func (q *Queries) GetSharedEntriesByComparison(ctx context.Context, comparisonID
 		return nil, err
 	}
 	return items, nil
+}
+
+const markQueueItemCompleted = `-- name: MarkQueueItemCompleted :exec
+UPDATE media_cache_queue
+SET status = 'completed', updated_at = NOW()
+WHERE id = $1
+`
+
+func (q *Queries) MarkQueueItemCompleted(ctx context.Context, id int32) error {
+	_, err := q.db.Exec(ctx, markQueueItemCompleted, id)
+	return err
+}
+
+const markQueueItemFailed = `-- name: MarkQueueItemFailed :exec
+UPDATE media_cache_queue
+SET status = 'failed',
+    attempts = attempts + 1,
+    retry_after = $2,
+    updated_at = NOW()
+WHERE id = $1
+`
+
+type MarkQueueItemFailedParams struct {
+	ID         int32            `json:"id"`
+	RetryAfter pgtype.Timestamp `json:"retry_after"`
+}
+
+func (q *Queries) MarkQueueItemFailed(ctx context.Context, arg MarkQueueItemFailedParams) error {
+	_, err := q.db.Exec(ctx, markQueueItemFailed, arg.ID, arg.RetryAfter)
+	return err
+}
+
+const markQueueItemProcessing = `-- name: MarkQueueItemProcessing :exec
+UPDATE media_cache_queue
+SET status = 'processing', updated_at = NOW()
+WHERE id = $1
+`
+
+func (q *Queries) MarkQueueItemProcessing(ctx context.Context, id int32) error {
+	_, err := q.db.Exec(ctx, markQueueItemProcessing, id)
+	return err
+}
+
+const needsCacheUpdate = `-- name: NeedsCacheUpdate :one
+SELECT
+    CASE
+        WHEN updated_at < NOW() - INTERVAL '24 hours' THEN true
+        ELSE false
+    END as needs_update
+FROM media_cache
+WHERE id = $1
+`
+
+func (q *Queries) NeedsCacheUpdate(ctx context.Context, id int32) (bool, error) {
+	row := q.db.QueryRow(ctx, needsCacheUpdate, id)
+	var needs_update bool
+	err := row.Scan(&needs_update)
+	return needs_update, err
 }
 
 const upsertMediaCache = `-- name: UpsertMediaCache :one
