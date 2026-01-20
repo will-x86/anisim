@@ -27,16 +27,11 @@ func AnalyzeComparisons(options AnalyzeComparisonsOptions) ComparisonResult {
 	comparatorMangaMap := buildMediaMap(options.ComparatorMangaList)
 
 	// Shared anime
+	// Note: This function appears to be legacy code no longer used in the main flow
+	// Scores should already be normalized when this data is processed
 	for _, creatorList := range options.CreatorAnimeList.Lists {
 		for _, creatorEntry := range creatorList.Entries {
 			if comparatorEntry, found := comparatorAnimeMap[creatorEntry.MediaId]; found {
-				if creatorEntry.Score > 10 {
-					creatorEntry.Score = creatorEntry.Score / 10
-				}
-				if comparatorEntry.Score > 10 {
-					comparatorEntry.Score = comparatorEntry.Score / 10
-				}
-
 				sharedEntry := SharedEntry{
 					MediaID:          creatorEntry.MediaId,
 					Media:            creatorEntry.Media,
@@ -54,13 +49,6 @@ func AnalyzeComparisons(options AnalyzeComparisonsOptions) ComparisonResult {
 	for _, creatorList := range options.CreatorMangaList.Lists {
 		for _, creatorEntry := range creatorList.Entries {
 			if comparatorEntry, found := comparatorMangaMap[creatorEntry.MediaId]; found {
-				if creatorEntry.Score > 10 {
-					creatorEntry.Score = creatorEntry.Score / 10
-				}
-				if comparatorEntry.Score > 10 {
-					comparatorEntry.Score = comparatorEntry.Score / 10
-				}
-
 				sharedEntry := SharedEntry{
 					MediaID:          creatorEntry.MediaId,
 					Media:            creatorEntry.Media,

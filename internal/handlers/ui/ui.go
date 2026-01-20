@@ -65,10 +65,16 @@ func (h *Handler) HandleRecommendation(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to load comparison data", http.StatusInternalServerError)
 		return
 	}
-	recommendations := recommendation.GetRecommendation(dbComparison, mediaEntries)
-	log.Printf("Generated %d recommendations for creator", len(recommendations))
-	if len(recommendations) > 50 {
-		recommendations = recommendations[:50]
+	recommendationResult := recommendation.GetRecommendations(dbComparison, mediaEntries)
+
+	// Limit anime and manga recommendations separately
+	animeRecs := recommendationResult.Anime
+	if len(animeRecs) > 10 {
+		animeRecs = animeRecs[:10]
+	}
+	mangaRecs := recommendationResult.Manga
+	if len(mangaRecs) > 10 {
+		mangaRecs = mangaRecs[:10]
 	}
 
 	creatorUser := types.User{
@@ -98,7 +104,7 @@ func (h *Handler) HandleRecommendation(w http.ResponseWriter, r *http.Request) {
 		Created:            dbComparison.ComparisonDate.Time,
 	}
 
-	component := pages.Recommendations(comparison, recommendations)
+	component := pages.Recommendations(comparison, animeRecs, mangaRecs)
 	templ.Handler(component).ServeHTTP(w, r)
 }
 func (h *Handler) HandleComparisonDetail(w http.ResponseWriter, r *http.Request) {
@@ -249,6 +255,14 @@ func (h *Handler) HandleCreateAniSimComparison(w http.ResponseWriter, r *http.Re
 	go enqueueMediaList(ctx, h.queries, comparatorAnimeList, "ANIME")
 	go enqueueMediaList(ctx, h.queries, comparatorMangaList, "MANGA")
 
+	// Detect rating scales for mean score normalization
+	creatorUses100Scale := detectUserScoreScale(creatorAnimeList, creatorMangaList)
+	comparatorUses100Scale := detectUserScoreScale(comparatorAnimeList, comparatorMangaList)
+
+	// Normalize mean scores
+	creatorMeanScore := normalizeUserScore(creatorUser.Statistics.Manga.MeanScore, creatorUses100Scale)
+	comparatorMeanScore := normalizeUserScore(comparatorUser.Statistics.Manga.MeanScore, comparatorUses100Scale)
+
 	comparison, err := h.queries.CreateComparison(ctx, db.CreateComparisonParams{
 		CreatorUsername:    creatorUsername,
 		ComparatorUsername: comparatorUsername,
@@ -260,7 +274,7 @@ func (h *Handler) HandleCreateAniSimComparison(w http.ResponseWriter, r *http.Re
 		CreatorEpisodesWatched: pgtype.Int4{Int32: int32(creatorUser.Statistics.Anime.EpisodesWatched), Valid: true},
 		CreatorMinutesWatched:  pgtype.Int4{Int32: int32(creatorUser.Statistics.Anime.MinutesWatched), Valid: true},
 		CreatorChaptersRead:    pgtype.Int4{Int32: int32(creatorUser.Statistics.Manga.ChaptersRead), Valid: true},
-		CreatorMeanScore:       pgtype.Float8{Float64: creatorUser.Statistics.Manga.MeanScore, Valid: true},
+		CreatorMeanScore:       pgtype.Float8{Float64: creatorMeanScore, Valid: true},
 		//Comparator
 		ComparatorID:              pgtype.Int4{Int32: int32(comparatorUser.ID), Valid: true},
 		ComparatorName:            pgtype.Text{String: comparatorUser.Name, Valid: true},
@@ -269,7 +283,7 @@ func (h *Handler) HandleCreateAniSimComparison(w http.ResponseWriter, r *http.Re
 		ComparatorEpisodesWatched: pgtype.Int4{Int32: int32(comparatorUser.Statistics.Anime.EpisodesWatched), Valid: true},
 		ComparatorMinutesWatched:  pgtype.Int4{Int32: int32(comparatorUser.Statistics.Anime.MinutesWatched), Valid: true},
 		ComparatorChaptersRead:    pgtype.Int4{Int32: int32(comparatorUser.Statistics.Manga.ChaptersRead), Valid: true},
-		ComparatorMeanScore:       pgtype.Float8{Float64: comparatorUser.Statistics.Manga.MeanScore, Valid: true},
+		ComparatorMeanScore:       pgtype.Float8{Float64: comparatorMeanScore, Valid: true},
 	})
 	if err != nil {
 		log.Printf("Error creating comparison: %v", err)
@@ -298,6 +312,49 @@ func (h *Handler) HandleCreateAniSimComparison(w http.ResponseWriter, r *http.Re
 	http.Redirect(w, r, fmt.Sprintf("/comparisons/%d", comparison.ID), http.StatusSeeOther)
 }
 
+// detectUserScoreScale checks if a user has any score > 10, indicating they use 100-point scale
+func detectUserScoreScale(animeList types.MediaListCollection, mangaList types.MediaListCollection) bool {
+	uses100Scale := false
+
+	// Check anime scores
+	for _, list := range animeList.Lists {
+		for _, entry := range list.Entries {
+			if entry.Score > 10 {
+				uses100Scale = true
+				break
+			}
+		}
+		if uses100Scale {
+			break
+		}
+	}
+
+	// Check manga scores if not already detected
+	if !uses100Scale {
+		for _, list := range mangaList.Lists {
+			for _, entry := range list.Entries {
+				if entry.Score > 10 {
+					uses100Scale = true
+					break
+				}
+			}
+			if uses100Scale {
+				break
+			}
+		}
+	}
+
+	return uses100Scale
+}
+
+// normalizeUserScore normalizes a score to 0-10 scale based on user's rating system
+func normalizeUserScore(score float64, uses100Scale bool) float64 {
+	if uses100Scale && score > 0 {
+		return score / 10.0
+	}
+	return score
+}
+
 // buildAllMediaEntries creates media entries for ALL media from both users
 func buildAllMediaEntries(
 	comparisonID int32,
@@ -306,6 +363,13 @@ func buildAllMediaEntries(
 	comparatorAnimeList types.MediaListCollection,
 	comparatorMangaList types.MediaListCollection,
 ) []db.BatchCreateMediaEntriesParams {
+	// Detect rating scales for each user
+	creatorUses100Scale := detectUserScoreScale(creatorAnimeList, creatorMangaList)
+	comparatorUses100Scale := detectUserScoreScale(comparatorAnimeList, comparatorMangaList)
+
+	log.Printf("Creator uses 100-point scale: %v", creatorUses100Scale)
+	log.Printf("Comparator uses 100-point scale: %v", comparatorUses100Scale)
+
 	// Map media_id -> entry data
 	mediaMap := make(map[int32]*mediaEntryData)
 
@@ -324,7 +388,7 @@ func buildAllMediaEntries(
 			}
 			mediaMap[id].InCreatorList = true
 			mediaMap[id].CreatorStatus = entry.Status
-			mediaMap[id].CreatorScore = entry.Score
+			mediaMap[id].CreatorScore = normalizeUserScore(entry.Score, creatorUses100Scale)
 		}
 	}
 
@@ -343,7 +407,7 @@ func buildAllMediaEntries(
 			}
 			mediaMap[id].InCreatorList = true
 			mediaMap[id].CreatorStatus = entry.Status
-			mediaMap[id].CreatorScore = entry.Score
+			mediaMap[id].CreatorScore = normalizeUserScore(entry.Score, creatorUses100Scale)
 		}
 	}
 
@@ -362,7 +426,7 @@ func buildAllMediaEntries(
 			}
 			mediaMap[id].InComparatorList = true
 			mediaMap[id].ComparatorStatus = entry.Status
-			mediaMap[id].ComparatorScore = entry.Score
+			mediaMap[id].ComparatorScore = normalizeUserScore(entry.Score, comparatorUses100Scale)
 		}
 	}
 
@@ -381,7 +445,7 @@ func buildAllMediaEntries(
 			}
 			mediaMap[id].InComparatorList = true
 			mediaMap[id].ComparatorStatus = entry.Status
-			mediaMap[id].ComparatorScore = entry.Score
+			mediaMap[id].ComparatorScore = normalizeUserScore(entry.Score, comparatorUses100Scale)
 		}
 	}
 

@@ -354,7 +354,7 @@ func recommendationRow(rec recommendation.Recommendation) templ.Component {
 	})
 }
 
-func Recommendations(c types.Comparison, recommendations []recommendation.Recommendation) templ.Component {
+func Recommendations(c types.Comparison, animeRecommendations []recommendation.Recommendation, mangaRecommendations []recommendation.Recommendation) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -439,14 +439,14 @@ func Recommendations(c types.Comparison, recommendations []recommendation.Recomm
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, " enjoyed.</p></div></div></div><!-- Recommendations Table --><div class=\"bg-white rounded-lg shadow p-6\"><h2 class=\"text-xl font-bold mb-4\">Top Recommendations (")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, " enjoyed. Recommendations are now separated by type!</p></div></div></div><!-- Anime Recommendations Table --><div class=\"bg-white rounded-lg shadow p-6 mb-6\"><h2 class=\"text-xl font-bold mb-4\">Top Anime Recommendations (")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var24 string
-			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(recommendations)))
+			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(animeRecommendations)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/recommendations.templ`, Line: 126, Col: 101}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/recommendations.templ`, Line: 126, Col: 112}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 			if templ_7745c5c3_Err != nil {
@@ -456,15 +456,15 @@ func Recommendations(c types.Comparison, recommendations []recommendation.Recomm
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if len(recommendations) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<p class=\"text-gray-500 text-center py-8\">No recommendations found. ")
+			if len(animeRecommendations) == 0 {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<p class=\"text-gray-500 text-center py-8\">No anime recommendations found. ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var25 string
 				templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(c.Comparator.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/recommendations.templ`, Line: 128, Col: 92}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/recommendations.templ`, Line: 128, Col: 98}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 				if templ_7745c5c3_Err != nil {
@@ -492,7 +492,7 @@ func Recommendations(c types.Comparison, recommendations []recommendation.Recomm
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				for _, rec := range recommendations {
+				for _, rec := range animeRecommendations {
 					templ_7745c5c3_Err = recommendationRow(rec).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
@@ -503,7 +503,71 @@ func Recommendations(c types.Comparison, recommendations []recommendation.Recomm
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</div><!-- Manga Recommendations Table --><div id=\"manga-recommendations\" class=\"bg-white rounded-lg shadow p-6\"><h2 class=\"text-xl font-bold mb-4\">Top Manga Recommendations (")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var27 string
+			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(mangaRecommendations)))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/recommendations.templ`, Line: 156, Col: 112}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, ")</h2>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if len(mangaRecommendations) == 0 {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<p class=\"text-gray-500 text-center py-8\">No manga recommendations found. ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var28 string
+				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(c.Comparator.Name)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/recommendations.templ`, Line: 158, Col: 98}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, " hasn't read anything you haven't!</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<div class=\"overflow-x-auto\"><table class=\"w-full\"><thead class=\"bg-gray-50\"><tr class=\"border-b-2 border-gray-200\"><th class=\"text-left p-3 font-semibold\">Title & Matching Genres/Tags</th><th class=\"text-center p-3 font-semibold\">Rec Score</th><th class=\"text-center p-3 font-semibold\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var29 string
+				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(c.Comparator.Name)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/recommendations.templ`, Line: 166, Col: 70}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, " Score</th><th class=\"text-center p-3 font-semibold\">Avg Score</th><th class=\"text-center p-3 font-semibold\"><div>Breakdown</div><div class=\"text-xs font-normal text-gray-500\">(A=Alignment, Q=Quality, R=Relevance)</div><div class=\"text-xs font-normal text-gray-500\">(G=Genre Match, T=Tag Match)</div></th></tr></thead> <tbody>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				for _, rec := range mangaRecommendations {
+					templ_7745c5c3_Err = recommendationRow(rec).Render(ctx, templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</tbody></table></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

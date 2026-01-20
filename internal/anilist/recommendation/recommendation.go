@@ -98,30 +98,42 @@ type Recommendation struct {
 	TagSources    map[string][]TagSource // Shows what media creator liked with each tag
 }
 
-// normalizeScore converts scores to 0-10 scale
-func normalizeScore(score float64) float64 {
-	if score > 10 {
-		return score / 10.0
-	}
-	return score
+// RecommendationResult holds separate anime and manga recommendations
+type RecommendationResult struct {
+	Anime []Recommendation
+	Manga []Recommendation
 }
 
-// GetRecommendation generates personalized recommendations for the creator
+// GetRecommendations generates separate personalized recommendations for anime and manga
 // based on what the comparator has watched but the creator hasn't
-func GetRecommendation(comparison db.Comparison, mediaEntries []db.GetMediaEntriesWithCacheRow) []Recommendation {
+func GetRecommendations(comparison db.Comparison, mediaEntries []db.GetMediaEntriesWithCacheRow) RecommendationResult {
+	// Build preferences separately for anime and manga
+	animeRecommendations := generateRecommendationsForType(mediaEntries, "anime")
+	mangaRecommendations := generateRecommendationsForType(mediaEntries, "manga")
+
+	log.Printf("Generated %d anime and %d manga recommendations", len(animeRecommendations), len(mangaRecommendations))
+
+	return RecommendationResult{
+		Anime: animeRecommendations,
+		Manga: mangaRecommendations,
+	}
+}
+
+// generateRecommendationsForType generates recommendations for a specific media type (anime or manga)
+func generateRecommendationsForType(mediaEntries []db.GetMediaEntriesWithCacheRow, mediaType string) []Recommendation {
 	var recommendations []Recommendation
 
-	creatorMeanScore := normalizeScore(comparison.CreatorMeanScore.Float64)
-	if creatorMeanScore == 0 {
-		log.Println("Creator has no mean score, skipping mean-based calculations")
-	}
-
-	// Build creator's genre and tag preferences from shared media they liked
-	creatorGenreScores := buildGenrePreferences(mediaEntries)
-	creatorTagScores, allTagSources := buildTagPreferences(mediaEntries)
+	// Build creator's genre and tag preferences from shared media they liked (filtered by type)
+	creatorGenreScores := buildGenrePreferencesForType(mediaEntries, mediaType)
+	creatorTagScores, allTagSources := buildTagPreferencesForType(mediaEntries, mediaType)
 
 	for _, row := range mediaEntries {
 		entry := row.MediaEntry
+
+		// Only process entries of the specified media type
+		if entry.MediaType != mediaType {
+			continue
+		}
 
 		// Only recommend media that:
 		// - Comparator has but creator doesn't
@@ -134,8 +146,8 @@ func GetRecommendation(comparison db.Comparison, mediaEntries []db.GetMediaEntri
 			continue
 		}
 
-		// Normalize comparator score (0-10 scale)
-		comparatorScore := normalizeScore(entry.ComparatorScore.Float64)
+		// Scores are already normalized to 0-10 scale in database
+		comparatorScore := entry.ComparatorScore.Float64
 
 		if comparatorScore == 0 {
 			continue
@@ -184,24 +196,23 @@ func GetRecommendation(comparison db.Comparison, mediaEntries []db.GetMediaEntri
 		return recommendations[i].Score > recommendations[j].Score
 	})
 
-	log.Printf("Generated %d recommendations", len(recommendations))
 	return recommendations
 }
 
-// buildGenrePreferences analyzes what genres the creator likes based on their scores
-func buildGenrePreferences(entries []db.GetMediaEntriesWithCacheRow) map[string]float64 {
+// buildGenrePreferencesForType analyzes what genres the creator likes based on their scores for a specific media type
+func buildGenrePreferencesForType(entries []db.GetMediaEntriesWithCacheRow, mediaType string) map[string]float64 {
 	genreScores := make(map[string]float64)
 	genreCounts := make(map[string]int)
 
 	for _, row := range entries {
 		entry := row.MediaEntry
 
-		// Only media creator has watched and scored
-		if !entry.InCreatorList || !entry.CreatorScore.Valid {
+		// Only media of the specified type that creator has watched and scored
+		if entry.MediaType != mediaType || !entry.InCreatorList || !entry.CreatorScore.Valid {
 			continue
 		}
 
-		creatorScore := normalizeScore(entry.CreatorScore.Float64)
+		creatorScore := entry.CreatorScore.Float64
 
 		if creatorScore == 0 {
 			continue
@@ -221,7 +232,92 @@ func buildGenrePreferences(entries []db.GetMediaEntriesWithCacheRow) map[string]
 	return genreAvgs
 }
 
-// buildTagPreferences analyzes what tags the creator likes based on their scores
+// buildGenrePreferences analyzes what genres the creator likes based on their scores (legacy, keeps all types)
+func buildGenrePreferences(entries []db.GetMediaEntriesWithCacheRow) map[string]float64 {
+	genreScores := make(map[string]float64)
+	genreCounts := make(map[string]int)
+
+	for _, row := range entries {
+		entry := row.MediaEntry
+
+		// Only media creator has watched and scored
+		if !entry.InCreatorList || !entry.CreatorScore.Valid {
+			continue
+		}
+
+		creatorScore := entry.CreatorScore.Float64
+
+		if creatorScore == 0 {
+			continue
+		}
+
+		for _, genre := range row.Genres {
+			genreScores[genre] += creatorScore
+			genreCounts[genre]++
+		}
+	}
+
+	genreAvgs := make(map[string]float64)
+	for genre, total := range genreScores {
+		genreAvgs[genre] = total / float64(genreCounts[genre])
+	}
+
+	return genreAvgs
+}
+
+// buildTagPreferencesForType analyzes what tags the creator likes based on their scores for a specific media type
+// Returns both the average scores and the source media for each tag
+func buildTagPreferencesForType(entries []db.GetMediaEntriesWithCacheRow, mediaType string) (map[string]float64, map[string][]TagSource) {
+	tagScores := make(map[string]float64)
+	tagCounts := make(map[string]int)
+	tagSources := make(map[string][]TagSource)
+
+	for _, row := range entries {
+		entry := row.MediaEntry
+
+		// Only media of the specified type that creator has watched and scored
+		if entry.MediaType != mediaType || !entry.InCreatorList || !entry.CreatorScore.Valid {
+			continue
+		}
+
+		creatorScore := entry.CreatorScore.Float64
+
+		if creatorScore == 0 {
+			continue
+		}
+
+		// Get media title
+		mediaTitle := entry.MediaTitleEnglish.String
+		if mediaTitle == "" {
+			mediaTitle = entry.MediaTitleRomaji
+		}
+
+		// Extract tags with ranks
+		tags := extractTags(row.TagNames, row.TagRanks)
+
+		for _, tag := range tags {
+			// Weight the tag by its rank (rank is 0-100, higher = more relevant)
+			weight := float64(tag.Rank) / 100.0
+			weightedScore := creatorScore * weight
+
+			tagScores[tag.Name] += weightedScore
+			tagCounts[tag.Name]++
+			tagSources[tag.Name] = append(tagSources[tag.Name], TagSource{
+				MediaTitle: mediaTitle,
+				Score:      creatorScore,
+			})
+		}
+	}
+
+	tagAvgs := make(map[string]float64)
+	for tag, total := range tagScores {
+		tagAvgs[tag] = total / float64(tagCounts[tag])
+	}
+
+	return tagAvgs, tagSources
+}
+
+// buildTagPreferences analyzes what tags the creator likes based on their scores (legacy, keeps all types)
 // Returns both the average scores and the source media for each tag
 func buildTagPreferences(entries []db.GetMediaEntriesWithCacheRow) (map[string]float64, map[string][]TagSource) {
 	tagScores := make(map[string]float64)
@@ -235,7 +331,7 @@ func buildTagPreferences(entries []db.GetMediaEntriesWithCacheRow) (map[string]f
 			continue
 		}
 
-		creatorScore := normalizeScore(entry.CreatorScore.Float64)
+		creatorScore := entry.CreatorScore.Float64
 
 		if creatorScore == 0 {
 			continue
