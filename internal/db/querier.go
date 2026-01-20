@@ -13,7 +13,12 @@ type Querier interface {
 	CreateSharedEntry(ctx context.Context, arg CreateSharedEntryParams) (SharedEntry, error)
 	GetAllComparisons(ctx context.Context) ([]Comparison, error)
 	GetComparison(ctx context.Context, id int32) (Comparison, error)
+	GetMediaCache(ctx context.Context, id int32) (MediaCache, error)
+	GetMediaTags(ctx context.Context, mediaID int32) ([]GetMediaTagsRow, error)
+	GetOrCreateTag(ctx context.Context, name string) (Tag, error)
 	GetSharedEntriesByComparison(ctx context.Context, comparisonID int32) ([]SharedEntry, error)
+	UpsertMediaCache(ctx context.Context, arg UpsertMediaCacheParams) (MediaCache, error)
+	UpsertMediaTag(ctx context.Context, arg UpsertMediaTagParams) error
 }
 
 var _ Querier = (*Queries)(nil)

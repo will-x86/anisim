@@ -48,6 +48,8 @@ func GetUsersMediaListCollection(id int) (types.MediaListCollection, types.Media
 				entries {
 					id
 					media {
+						id
+						type
 						title {
 							romaji
 							english
@@ -56,6 +58,22 @@ func GetUsersMediaListCollection(id int) (types.MediaListCollection, types.Media
 							large
 							medium
 						}
+						genres
+						tags {
+							name
+							rank
+							isMediaSpoiler
+							isGeneralSpoiler
+						}
+						averageScore
+						meanScore
+						popularity
+						favourites
+						format
+						status
+						seasonYear
+						season
+						isAdult
 					}
 					mediaId
 					progress
@@ -77,6 +95,8 @@ func GetUsersMediaListCollection(id int) (types.MediaListCollection, types.Media
 				entries {
 					id
 					media {
+						id
+						type
 						title {
 							romaji
 							english
@@ -85,6 +105,22 @@ func GetUsersMediaListCollection(id int) (types.MediaListCollection, types.Media
 							large
 							medium
 						}
+						genres
+						tags {
+							name
+							rank
+							isMediaSpoiler
+							isGeneralSpoiler
+						}
+						averageScore
+						meanScore
+						popularity
+						favourites
+						format
+						status
+						seasonYear
+						season
+						isAdult
 					}
 					mediaId
 					progress

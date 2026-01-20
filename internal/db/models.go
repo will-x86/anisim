@@ -31,6 +31,35 @@ type Comparison struct {
 	ComparatorMeanScore       pgtype.Float8    `json:"comparator_mean_score"`
 }
 
+type MediaCache struct {
+	ID               int32            `json:"id"`
+	Type             string           `json:"type"`
+	TitleRomaji      string           `json:"title_romaji"`
+	TitleEnglish     pgtype.Text      `json:"title_english"`
+	CoverImageLarge  pgtype.Text      `json:"cover_image_large"`
+	CoverImageMedium pgtype.Text      `json:"cover_image_medium"`
+	Genres           []string         `json:"genres"`
+	AverageScore     pgtype.Int4      `json:"average_score"`
+	MeanScore        pgtype.Int4      `json:"mean_score"`
+	Popularity       pgtype.Int4      `json:"popularity"`
+	Favourites       pgtype.Int4      `json:"favourites"`
+	Format           pgtype.Text      `json:"format"`
+	Status           pgtype.Text      `json:"status"`
+	SeasonYear       pgtype.Int4      `json:"season_year"`
+	Season           pgtype.Text      `json:"season"`
+	IsAdult          pgtype.Bool      `json:"is_adult"`
+	UpdatedAt        pgtype.Timestamp `json:"updated_at"`
+	CreatedAt        pgtype.Timestamp `json:"created_at"`
+}
+
+type MediaTag struct {
+	MediaID          int32       `json:"media_id"`
+	TagID            int32       `json:"tag_id"`
+	Rank             int32       `json:"rank"`
+	IsMediaSpoiler   pgtype.Bool `json:"is_media_spoiler"`
+	IsGeneralSpoiler pgtype.Bool `json:"is_general_spoiler"`
+}
+
 type SharedEntry struct {
 	ID                int32            `json:"id"`
 	ComparisonID      int32            `json:"comparison_id"`
@@ -45,4 +74,9 @@ type SharedEntry struct {
 	CreatedAt         pgtype.Timestamp `json:"created_at"`
 	CreatorStatus     string           `json:"creator_status"`
 	ComparatorStatus  string           `json:"comparator_status"`
+}
+
+type Tag struct {
+	ID   int32  `json:"id"`
+	Name string `json:"name"`
 }

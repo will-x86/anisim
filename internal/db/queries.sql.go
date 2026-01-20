@@ -248,6 +248,93 @@ func (q *Queries) GetComparison(ctx context.Context, id int32) (Comparison, erro
 	return i, err
 }
 
+const getMediaCache = `-- name: GetMediaCache :one
+SELECT id, type, title_romaji, title_english, cover_image_large, cover_image_medium, genres, average_score, mean_score, popularity, favourites, format, status, season_year, season, is_adult, updated_at, created_at FROM media_cache
+WHERE id = $1
+`
+
+func (q *Queries) GetMediaCache(ctx context.Context, id int32) (MediaCache, error) {
+	row := q.db.QueryRow(ctx, getMediaCache, id)
+	var i MediaCache
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.TitleRomaji,
+		&i.TitleEnglish,
+		&i.CoverImageLarge,
+		&i.CoverImageMedium,
+		&i.Genres,
+		&i.AverageScore,
+		&i.MeanScore,
+		&i.Popularity,
+		&i.Favourites,
+		&i.Format,
+		&i.Status,
+		&i.SeasonYear,
+		&i.Season,
+		&i.IsAdult,
+		&i.UpdatedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getMediaTags = `-- name: GetMediaTags :many
+SELECT t.id, t.name, mt.rank, mt.is_media_spoiler, mt.is_general_spoiler
+FROM media_tags mt
+JOIN tags t ON mt.tag_id = t.id
+WHERE mt.media_id = $1
+ORDER BY mt.rank DESC
+`
+
+type GetMediaTagsRow struct {
+	ID               int32       `json:"id"`
+	Name             string      `json:"name"`
+	Rank             int32       `json:"rank"`
+	IsMediaSpoiler   pgtype.Bool `json:"is_media_spoiler"`
+	IsGeneralSpoiler pgtype.Bool `json:"is_general_spoiler"`
+}
+
+func (q *Queries) GetMediaTags(ctx context.Context, mediaID int32) ([]GetMediaTagsRow, error) {
+	rows, err := q.db.Query(ctx, getMediaTags, mediaID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMediaTagsRow{}
+	for rows.Next() {
+		var i GetMediaTagsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Rank,
+			&i.IsMediaSpoiler,
+			&i.IsGeneralSpoiler,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getOrCreateTag = `-- name: GetOrCreateTag :one
+INSERT INTO tags (name)
+VALUES ($1)
+ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+RETURNING id, name
+`
+
+func (q *Queries) GetOrCreateTag(ctx context.Context, name string) (Tag, error) {
+	row := q.db.QueryRow(ctx, getOrCreateTag, name)
+	var i Tag
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
+}
+
 const getSharedEntriesByComparison = `-- name: GetSharedEntriesByComparison :many
 SELECT id, comparison_id, media_type, media_id, media_title_romaji, media_title_english, media_cover_large, media_cover_medium, creator_score, comparator_score, created_at, creator_status, comparator_status FROM shared_entries
 WHERE comparison_id = $1
@@ -286,4 +373,121 @@ func (q *Queries) GetSharedEntriesByComparison(ctx context.Context, comparisonID
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertMediaCache = `-- name: UpsertMediaCache :one
+INSERT INTO media_cache (
+    id, type, title_romaji, title_english, cover_image_large, cover_image_medium,
+    genres, average_score, mean_score, popularity, favourites, format, status,
+    season_year, season, is_adult
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+ON CONFLICT (id) DO UPDATE SET
+    type = EXCLUDED.type,
+    title_romaji = EXCLUDED.title_romaji,
+    title_english = EXCLUDED.title_english,
+    cover_image_large = EXCLUDED.cover_image_large,
+    cover_image_medium = EXCLUDED.cover_image_medium,
+    genres = EXCLUDED.genres,
+    average_score = EXCLUDED.average_score,
+    mean_score = EXCLUDED.mean_score,
+    popularity = EXCLUDED.popularity,
+    favourites = EXCLUDED.favourites,
+    format = EXCLUDED.format,
+    status = EXCLUDED.status,
+    season_year = EXCLUDED.season_year,
+    season = EXCLUDED.season,
+    is_adult = EXCLUDED.is_adult,
+    updated_at = CURRENT_TIMESTAMP
+RETURNING id, type, title_romaji, title_english, cover_image_large, cover_image_medium, genres, average_score, mean_score, popularity, favourites, format, status, season_year, season, is_adult, updated_at, created_at
+`
+
+type UpsertMediaCacheParams struct {
+	ID               int32       `json:"id"`
+	Type             string      `json:"type"`
+	TitleRomaji      string      `json:"title_romaji"`
+	TitleEnglish     pgtype.Text `json:"title_english"`
+	CoverImageLarge  pgtype.Text `json:"cover_image_large"`
+	CoverImageMedium pgtype.Text `json:"cover_image_medium"`
+	Genres           []string    `json:"genres"`
+	AverageScore     pgtype.Int4 `json:"average_score"`
+	MeanScore        pgtype.Int4 `json:"mean_score"`
+	Popularity       pgtype.Int4 `json:"popularity"`
+	Favourites       pgtype.Int4 `json:"favourites"`
+	Format           pgtype.Text `json:"format"`
+	Status           pgtype.Text `json:"status"`
+	SeasonYear       pgtype.Int4 `json:"season_year"`
+	Season           pgtype.Text `json:"season"`
+	IsAdult          pgtype.Bool `json:"is_adult"`
+}
+
+func (q *Queries) UpsertMediaCache(ctx context.Context, arg UpsertMediaCacheParams) (MediaCache, error) {
+	row := q.db.QueryRow(ctx, upsertMediaCache,
+		arg.ID,
+		arg.Type,
+		arg.TitleRomaji,
+		arg.TitleEnglish,
+		arg.CoverImageLarge,
+		arg.CoverImageMedium,
+		arg.Genres,
+		arg.AverageScore,
+		arg.MeanScore,
+		arg.Popularity,
+		arg.Favourites,
+		arg.Format,
+		arg.Status,
+		arg.SeasonYear,
+		arg.Season,
+		arg.IsAdult,
+	)
+	var i MediaCache
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.TitleRomaji,
+		&i.TitleEnglish,
+		&i.CoverImageLarge,
+		&i.CoverImageMedium,
+		&i.Genres,
+		&i.AverageScore,
+		&i.MeanScore,
+		&i.Popularity,
+		&i.Favourites,
+		&i.Format,
+		&i.Status,
+		&i.SeasonYear,
+		&i.Season,
+		&i.IsAdult,
+		&i.UpdatedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const upsertMediaTag = `-- name: UpsertMediaTag :exec
+INSERT INTO media_tags (media_id, tag_id, rank, is_media_spoiler, is_general_spoiler)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (media_id, tag_id) DO UPDATE SET
+    rank = EXCLUDED.rank,
+    is_media_spoiler = EXCLUDED.is_media_spoiler,
+    is_general_spoiler = EXCLUDED.is_general_spoiler
+`
+
+type UpsertMediaTagParams struct {
+	MediaID          int32       `json:"media_id"`
+	TagID            int32       `json:"tag_id"`
+	Rank             int32       `json:"rank"`
+	IsMediaSpoiler   pgtype.Bool `json:"is_media_spoiler"`
+	IsGeneralSpoiler pgtype.Bool `json:"is_general_spoiler"`
+}
+
+func (q *Queries) UpsertMediaTag(ctx context.Context, arg UpsertMediaTagParams) error {
+	_, err := q.db.Exec(ctx, upsertMediaTag,
+		arg.MediaID,
+		arg.TagID,
+		arg.Rank,
+		arg.IsMediaSpoiler,
+		arg.IsGeneralSpoiler,
+	)
+	return err
 }

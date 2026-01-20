@@ -62,8 +62,21 @@ type MediaListEntry struct {
 }
 
 type Media struct {
-	Title      Title      `json:"title"`
-	CoverImage CoverImage `json:"coverImage"`
+	ID           int        `json:"id"`
+	Type         string     `json:"type"`
+	Title        Title      `json:"title"`
+	CoverImage   CoverImage `json:"coverImage"`
+	Genres       []string   `json:"genres"`
+	Tags         []MediaTag `json:"tags"`
+	AverageScore *int       `json:"averageScore"`
+	MeanScore    *int       `json:"meanScore"`
+	Popularity   *int       `json:"popularity"`
+	Favourites   int        `json:"favourites"`
+	Format       string     `json:"format"`
+	Status       string     `json:"status"`
+	SeasonYear   *int       `json:"seasonYear"`
+	Season       string     `json:"season"`
+	IsAdult      bool       `json:"isAdult"`
 }
 
 type Title struct {
@@ -74,6 +87,13 @@ type Title struct {
 type CoverImage struct {
 	Large  string `json:"large"`
 	Medium string `json:"medium"`
+}
+
+type MediaTag struct {
+	Name             string `json:"name"`
+	Rank             int    `json:"rank"`
+	IsMediaSpoiler   bool   `json:"isMediaSpoiler"`
+	IsGeneralSpoiler bool   `json:"isGeneralSpoiler"`
 }
 
 type FuzzyDate struct {

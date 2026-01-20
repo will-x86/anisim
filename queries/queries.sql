@@ -51,3 +51,54 @@ RETURNING *;
 SELECT * FROM shared_entries
 WHERE comparison_id = $1
 ORDER BY creator_status, media_title_romaji;
+
+-- name: UpsertMediaCache :one
+INSERT INTO media_cache (
+    id, type, title_romaji, title_english, cover_image_large, cover_image_medium,
+    genres, average_score, mean_score, popularity, favourites, format, status,
+    season_year, season, is_adult
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+ON CONFLICT (id) DO UPDATE SET
+    type = EXCLUDED.type,
+    title_romaji = EXCLUDED.title_romaji,
+    title_english = EXCLUDED.title_english,
+    cover_image_large = EXCLUDED.cover_image_large,
+    cover_image_medium = EXCLUDED.cover_image_medium,
+    genres = EXCLUDED.genres,
+    average_score = EXCLUDED.average_score,
+    mean_score = EXCLUDED.mean_score,
+    popularity = EXCLUDED.popularity,
+    favourites = EXCLUDED.favourites,
+    format = EXCLUDED.format,
+    status = EXCLUDED.status,
+    season_year = EXCLUDED.season_year,
+    season = EXCLUDED.season,
+    is_adult = EXCLUDED.is_adult,
+    updated_at = CURRENT_TIMESTAMP
+RETURNING *;
+
+-- name: GetOrCreateTag :one
+INSERT INTO tags (name)
+VALUES ($1)
+ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+RETURNING *;
+
+-- name: UpsertMediaTag :exec
+INSERT INTO media_tags (media_id, tag_id, rank, is_media_spoiler, is_general_spoiler)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (media_id, tag_id) DO UPDATE SET
+    rank = EXCLUDED.rank,
+    is_media_spoiler = EXCLUDED.is_media_spoiler,
+    is_general_spoiler = EXCLUDED.is_general_spoiler;
+
+-- name: GetMediaCache :one
+SELECT * FROM media_cache
+WHERE id = $1;
+
+-- name: GetMediaTags :many
+SELECT t.id, t.name, mt.rank, mt.is_media_spoiler, mt.is_general_spoiler
+FROM media_tags mt
+JOIN tags t ON mt.tag_id = t.id
+WHERE mt.media_id = $1
+ORDER BY mt.rank DESC;

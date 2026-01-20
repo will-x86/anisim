@@ -10,6 +10,7 @@ import (
 
 	"github.com/will-x86/anisim/internal/analyzer"
 	"github.com/will-x86/anisim/internal/anilist"
+	"github.com/will-x86/anisim/internal/cache"
 	"github.com/will-x86/anisim/internal/db"
 	"github.com/will-x86/anisim/internal/types"
 	"github.com/will-x86/anisim/templates/pages"
@@ -179,6 +180,12 @@ func (h *Handler) HandleCreateAniSimComparison(w http.ResponseWriter, r *http.Re
 		http.Error(w, "Failed to fetch comparison data from AniList", http.StatusInternalServerError)
 		return
 	}
+
+	// Cache media metadata in the background
+	cache.CacheMediaListInBackground(ctx, h.queries, creatorAnimeList)
+	cache.CacheMediaListInBackground(ctx, h.queries, creatorMangaList)
+	cache.CacheMediaListInBackground(ctx, h.queries, comparatorAnimeList)
+	cache.CacheMediaListInBackground(ctx, h.queries, comparatorMangaList)
 
 	result := analyzer.AnalyzeComparisons(analyzer.AnalyzeComparisonsOptions{
 		CreatorAnimeList:    creatorAnimeList,
