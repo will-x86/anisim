@@ -5,13 +5,15 @@ import (
 )
 
 type ComparisonResult struct {
-	SharedAnime map[string][]SharedEntry // Map of CURRENT|PLANNING|COMPLETED|DROPPED|PAUSED|REPEATING to list of shared entries
-	SharedManga map[string][]SharedEntry
+	AllSharedAnime []SharedEntry // Flat list of all shared anime
+	AllSharedManga []SharedEntry // Flat list of all shared manga
 }
 
 type SharedEntry struct {
-	MediaID         int
-	Media           types.Media
-	CreatorScore    float64
-	ComparatorScore float64
+	MediaID          int
+	Media            types.Media
+	CreatorScore     float64
+	ComparatorScore  float64
+	CreatorStatus    string
+	ComparatorStatus string
 }

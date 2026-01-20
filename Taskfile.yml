@@ -45,6 +45,11 @@ tasks:
     cmds:
       - sqlc generate
 
+  db:up:
+    desc: Start the database using Docker
+    cmds:
+      - docker compose up -d 
+    
   db:migrate:
     desc: Run goose migrations
     cmds:

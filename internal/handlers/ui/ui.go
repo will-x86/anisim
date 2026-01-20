@@ -105,10 +105,9 @@ func (h *Handler) HandleComparisonDetail(w http.ResponseWriter, r *http.Request)
 	}
 
 	result := analyzer.ComparisonResult{
-		SharedAnime: make(map[string][]analyzer.SharedEntry),
-		SharedManga: make(map[string][]analyzer.SharedEntry),
+		AllSharedAnime: []analyzer.SharedEntry{},
+		AllSharedManga: []analyzer.SharedEntry{},
 	}
-
 	for _, entry := range sharedEntries {
 		sharedEntry := analyzer.SharedEntry{
 			MediaID: int(entry.MediaID),
@@ -122,14 +121,16 @@ func (h *Handler) HandleComparisonDetail(w http.ResponseWriter, r *http.Request)
 					Medium: entry.MediaCoverMedium.String,
 				},
 			},
-			CreatorScore:    entry.CreatorScore.Float64,
-			ComparatorScore: entry.ComparatorScore.Float64,
+			CreatorScore:     entry.CreatorScore.Float64,
+			ComparatorScore:  entry.ComparatorScore.Float64,
+			CreatorStatus:    entry.CreatorStatus,
+			ComparatorStatus: entry.ComparatorStatus,
 		}
 
 		if entry.MediaType == "anime" {
-			result.SharedAnime[entry.Status] = append(result.SharedAnime[entry.Status], sharedEntry)
+			result.AllSharedAnime = append(result.AllSharedAnime, sharedEntry)
 		} else {
-			result.SharedManga[entry.Status] = append(result.SharedManga[entry.Status], sharedEntry)
+			result.AllSharedManga = append(result.AllSharedManga, sharedEntry)
 		}
 	}
 
@@ -215,44 +216,42 @@ func (h *Handler) HandleCreateAniSimComparison(w http.ResponseWriter, r *http.Re
 	}
 
 	// Store shared anime entries
-	for status, entries := range result.SharedAnime {
-		for _, entry := range entries {
-			_, err := h.queries.CreateSharedEntry(ctx, db.CreateSharedEntryParams{
-				ComparisonID:      comparison.ID,
-				MediaType:         "anime",
-				MediaID:           int32(entry.MediaID),
-				MediaTitleRomaji:  entry.Media.Title.Romaji,
-				MediaTitleEnglish: pgtype.Text{String: entry.Media.Title.English, Valid: entry.Media.Title.English != ""},
-				MediaCoverLarge:   pgtype.Text{String: entry.Media.CoverImage.Large, Valid: true},
-				MediaCoverMedium:  pgtype.Text{String: entry.Media.CoverImage.Medium, Valid: true},
-				Status:            status,
-				CreatorScore:      pgtype.Float8{Float64: entry.CreatorScore, Valid: entry.CreatorScore > 0},
-				ComparatorScore:   pgtype.Float8{Float64: entry.ComparatorScore, Valid: entry.ComparatorScore > 0},
-			})
-			if err != nil {
-				log.Printf("Error creating shared anime entry: %v", err)
-			}
+	for _, entry := range result.AllSharedAnime {
+		_, err := h.queries.CreateSharedEntry(ctx, db.CreateSharedEntryParams{
+			ComparisonID:      comparison.ID,
+			MediaType:         "anime",
+			MediaID:           int32(entry.MediaID),
+			MediaTitleRomaji:  entry.Media.Title.Romaji,
+			MediaTitleEnglish: pgtype.Text{String: entry.Media.Title.English, Valid: entry.Media.Title.English != ""},
+			MediaCoverLarge:   pgtype.Text{String: entry.Media.CoverImage.Large, Valid: true},
+			MediaCoverMedium:  pgtype.Text{String: entry.Media.CoverImage.Medium, Valid: true},
+			CreatorStatus:     entry.CreatorStatus,
+			ComparatorStatus:  entry.ComparatorStatus,
+			CreatorScore:      pgtype.Float8{Float64: entry.CreatorScore, Valid: entry.CreatorScore > 0},
+			ComparatorScore:   pgtype.Float8{Float64: entry.ComparatorScore, Valid: entry.ComparatorScore > 0},
+		})
+		if err != nil {
+			log.Printf("Error creating shared anime entry: %v", err)
 		}
 	}
 
 	// Store shared manga entries
-	for status, entries := range result.SharedManga {
-		for _, entry := range entries {
-			_, err := h.queries.CreateSharedEntry(ctx, db.CreateSharedEntryParams{
-				ComparisonID:      comparison.ID,
-				MediaType:         "manga",
-				MediaID:           int32(entry.MediaID),
-				MediaTitleRomaji:  entry.Media.Title.Romaji,
-				MediaTitleEnglish: pgtype.Text{String: entry.Media.Title.English, Valid: entry.Media.Title.English != ""},
-				MediaCoverLarge:   pgtype.Text{String: entry.Media.CoverImage.Large, Valid: true},
-				MediaCoverMedium:  pgtype.Text{String: entry.Media.CoverImage.Medium, Valid: true},
-				Status:            status,
-				CreatorScore:      pgtype.Float8{Float64: entry.CreatorScore, Valid: entry.CreatorScore > 0},
-				ComparatorScore:   pgtype.Float8{Float64: entry.ComparatorScore, Valid: entry.ComparatorScore > 0},
-			})
-			if err != nil {
-				log.Printf("Error creating shared manga entry: %v", err)
-			}
+	for _, entry := range result.AllSharedManga {
+		_, err := h.queries.CreateSharedEntry(ctx, db.CreateSharedEntryParams{
+			ComparisonID:      comparison.ID,
+			MediaType:         "manga",
+			MediaID:           int32(entry.MediaID),
+			MediaTitleRomaji:  entry.Media.Title.Romaji,
+			MediaTitleEnglish: pgtype.Text{String: entry.Media.Title.English, Valid: entry.Media.Title.English != ""},
+			MediaCoverLarge:   pgtype.Text{String: entry.Media.CoverImage.Large, Valid: true},
+			MediaCoverMedium:  pgtype.Text{String: entry.Media.CoverImage.Medium, Valid: true},
+			CreatorStatus:     entry.CreatorStatus,
+			ComparatorStatus:  entry.ComparatorStatus,
+			CreatorScore:      pgtype.Float8{Float64: entry.CreatorScore, Valid: entry.CreatorScore > 0},
+			ComparatorScore:   pgtype.Float8{Float64: entry.ComparatorScore, Valid: entry.ComparatorScore > 0},
+		})
+		if err != nil {
+			log.Printf("Error creating shared manga entry: %v", err)
 		}
 	}
 

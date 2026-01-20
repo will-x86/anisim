@@ -39,14 +39,15 @@ INSERT INTO shared_entries (
     media_title_english,
     media_cover_large,
     media_cover_medium,
-    status,
+    creator_status,
+    comparator_status,
     creator_score,
     comparator_score
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING *;
 
 -- name: GetSharedEntriesByComparison :many
 SELECT * FROM shared_entries
 WHERE comparison_id = $1
-ORDER BY status, media_title_romaji;
+ORDER BY creator_status, media_title_romaji;

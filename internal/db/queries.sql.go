@@ -113,12 +113,13 @@ INSERT INTO shared_entries (
     media_title_english,
     media_cover_large,
     media_cover_medium,
-    status,
+    creator_status,
+    comparator_status,
     creator_score,
     comparator_score
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, comparison_id, media_type, media_id, media_title_romaji, media_title_english, media_cover_large, media_cover_medium, status, creator_score, comparator_score, created_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, comparison_id, media_type, media_id, media_title_romaji, media_title_english, media_cover_large, media_cover_medium, creator_score, comparator_score, created_at, creator_status, comparator_status
 `
 
 type CreateSharedEntryParams struct {
@@ -129,7 +130,8 @@ type CreateSharedEntryParams struct {
 	MediaTitleEnglish pgtype.Text   `json:"media_title_english"`
 	MediaCoverLarge   pgtype.Text   `json:"media_cover_large"`
 	MediaCoverMedium  pgtype.Text   `json:"media_cover_medium"`
-	Status            string        `json:"status"`
+	CreatorStatus     string        `json:"creator_status"`
+	ComparatorStatus  string        `json:"comparator_status"`
 	CreatorScore      pgtype.Float8 `json:"creator_score"`
 	ComparatorScore   pgtype.Float8 `json:"comparator_score"`
 }
@@ -143,7 +145,8 @@ func (q *Queries) CreateSharedEntry(ctx context.Context, arg CreateSharedEntryPa
 		arg.MediaTitleEnglish,
 		arg.MediaCoverLarge,
 		arg.MediaCoverMedium,
-		arg.Status,
+		arg.CreatorStatus,
+		arg.ComparatorStatus,
 		arg.CreatorScore,
 		arg.ComparatorScore,
 	)
@@ -157,10 +160,11 @@ func (q *Queries) CreateSharedEntry(ctx context.Context, arg CreateSharedEntryPa
 		&i.MediaTitleEnglish,
 		&i.MediaCoverLarge,
 		&i.MediaCoverMedium,
-		&i.Status,
 		&i.CreatorScore,
 		&i.ComparatorScore,
 		&i.CreatedAt,
+		&i.CreatorStatus,
+		&i.ComparatorStatus,
 	)
 	return i, err
 }
@@ -245,9 +249,9 @@ func (q *Queries) GetComparison(ctx context.Context, id int32) (Comparison, erro
 }
 
 const getSharedEntriesByComparison = `-- name: GetSharedEntriesByComparison :many
-SELECT id, comparison_id, media_type, media_id, media_title_romaji, media_title_english, media_cover_large, media_cover_medium, status, creator_score, comparator_score, created_at FROM shared_entries
+SELECT id, comparison_id, media_type, media_id, media_title_romaji, media_title_english, media_cover_large, media_cover_medium, creator_score, comparator_score, created_at, creator_status, comparator_status FROM shared_entries
 WHERE comparison_id = $1
-ORDER BY status, media_title_romaji
+ORDER BY creator_status, media_title_romaji
 `
 
 func (q *Queries) GetSharedEntriesByComparison(ctx context.Context, comparisonID int32) ([]SharedEntry, error) {
@@ -268,10 +272,11 @@ func (q *Queries) GetSharedEntriesByComparison(ctx context.Context, comparisonID
 			&i.MediaTitleEnglish,
 			&i.MediaCoverLarge,
 			&i.MediaCoverMedium,
-			&i.Status,
 			&i.CreatorScore,
 			&i.ComparatorScore,
 			&i.CreatedAt,
+			&i.CreatorStatus,
+			&i.ComparatorStatus,
 		); err != nil {
 			return nil, err
 		}

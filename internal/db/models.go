@@ -40,8 +40,9 @@ type SharedEntry struct {
 	MediaTitleEnglish pgtype.Text      `json:"media_title_english"`
 	MediaCoverLarge   pgtype.Text      `json:"media_cover_large"`
 	MediaCoverMedium  pgtype.Text      `json:"media_cover_medium"`
-	Status            string           `json:"status"`
 	CreatorScore      pgtype.Float8    `json:"creator_score"`
 	ComparatorScore   pgtype.Float8    `json:"comparator_score"`
 	CreatedAt         pgtype.Timestamp `json:"created_at"`
+	CreatorStatus     string           `json:"creator_status"`
+	ComparatorStatus  string           `json:"comparator_status"`
 }
