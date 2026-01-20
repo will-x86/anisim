@@ -10,6 +10,7 @@ import (
 
 	"github.com/will-x86/anisim/internal/analyzer"
 	"github.com/will-x86/anisim/internal/anilist"
+	"github.com/will-x86/anisim/internal/anilist/recommendation"
 	"github.com/will-x86/anisim/internal/db"
 	"github.com/will-x86/anisim/internal/types"
 	"github.com/will-x86/anisim/templates/pages"
@@ -44,6 +45,29 @@ func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(component).ServeHTTP(w, r)
 }
 
+func (h *Handler) HandleRecommendation(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+	dbComparison, err := h.queries.GetComparison(ctx, int32(id))
+	if err != nil {
+		log.Printf("Error fetching comparison: %v", err)
+		http.Error(w, "Comparison not found", http.StatusNotFound)
+		return
+	}
+	sharedEntries, err := h.queries.GetSharedEntriesByComparison(ctx, int32(id))
+	if err != nil {
+		log.Printf("Error fetching shared entries: %v", err)
+		http.Error(w, "Failed to load comparison data", http.StatusInternalServerError)
+		return
+	}
+	recommendation.GetRecommendation(dbComparison, sharedEntries)
+
+}
 func (h *Handler) HandleComparisonDetail(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 	idStr := chi.URLParam(r, "id")
