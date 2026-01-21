@@ -66,3 +66,22 @@ Tech used:
 - Postgres 
 - Chi
 - Templ
+
+
+
+## Caching
+
+Anilist has rigorous api limits, throttled to 15 per minute as of writing, so caching is fairly important.
+
+The process is:
+1. User requests comparison
+2. We get their "media list" from Anilist (list of all anime/manga they have plan to watch / have watched)
+- Previously at this step, I got all of the media info, aka tags, genre etc, but for users with large lists, this resulted in ~10s response time...
+3. Respond with comparison, add all media ID's to database cache queue
+4. Background worker runs on a 5s ticker, grabbing 50 at a a time from the DB, admittedly I could do all at once, but to save bursts of traffic, this is limited to 50.
+5. If the media has *not* been updated in the last 24 hours, we fetch the full media from Anilist API.
+6. If the entire batch of 50 are cached, and fresh, we ignore ticker and continue.
+7. Otherwise, hit anilist API, store in cache, repeat.
+
+- Above respects rate-limit, though through limitations of `github.com/machinebox/graphql` package, I cannot see the response headers, so I cannot dynamically adjust rate-limiting based on remaining requests. Sleeping for 60s instead.
+
